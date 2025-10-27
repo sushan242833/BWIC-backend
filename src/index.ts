@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { contactRouter } from "@routes/contact.route";
 import { categoriesRouter } from "@routes/category.route";
 import { propertiesRouter } from "@routes/properties.route";
+import { statsRouter } from "@routes/stats.routes";
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use("/api/properties", propertiesRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/contacts", contactRouter);
+app.use("/api/stats", statsRouter);
 app.use(express.static(path.join(__dirname, "public")));
 
 sequelize.sync({ alter: true }).then(() => {
