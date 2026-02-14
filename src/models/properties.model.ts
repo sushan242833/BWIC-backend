@@ -34,14 +34,23 @@ export class Property extends Model {
   @Column({ type: DataType.STRING, allowNull: false })
   price!: string;
 
+  @Column({ type: DataType.INTEGER, allowNull: true })
+  priceNpr!: number;
+
   @Column({ type: DataType.STRING, allowNull: false })
   roi!: string;
+
+  @Column({ type: DataType.FLOAT, allowNull: true })
+  roiPercent!: number;
 
   @Column({ type: DataType.STRING, allowNull: false })
   status!: string;
 
   @Column({ type: DataType.STRING, allowNull: false })
   area!: string;
+
+  @Column({ type: DataType.FLOAT, allowNull: true })
+  areaSqft!: number;
 
   @Column({
     type: DataType.STRING,
