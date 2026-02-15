@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
 import { Op, Order, WhereOptions } from "sequelize";
+import { geocodeLocation } from "@utils/geocoding";
 
 interface IPropertyRequest {
   title: string;
@@ -18,6 +19,24 @@ interface IPropertyRequest {
 }
 
 export class PropertyController {
+  private async resolveCoordinates(
+    location: string,
+    fallback?: { latitude?: number | null; longitude?: number | null },
+  ): Promise<{ latitude?: number; longitude?: number }> {
+    const coordinates = await geocodeLocation(location);
+    if (coordinates) {
+      return {
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+      };
+    }
+
+    return {
+      latitude: fallback?.latitude ?? undefined,
+      longitude: fallback?.longitude ?? undefined,
+    };
+  }
+
   private parseNumericValue(raw: string | number): number {
     if (typeof raw === "number") return raw;
     const normalized = raw.replace(/,/g, "").trim();
@@ -216,11 +235,16 @@ export class PropertyController {
       const distanceFromHighway = this.parseDistanceFromHighway(
         request.distanceFromHighway,
       );
+      const { latitude, longitude } = await this.resolveCoordinates(
+        request.location,
+      );
 
       const newProperty = await Property.create({
         title: request.title,
         categoryId: Number(request.categoryId),
         location: request.location,
+        latitude,
+        longitude,
         price: request.price,
         priceNpr,
         roi: request.roi,
@@ -282,11 +306,26 @@ export class PropertyController {
       const distanceFromHighway = this.parseDistanceFromHighway(
         request.distanceFromHighway,
       );
+      const locationChanged =
+        request.location.trim().toLowerCase() !==
+        property.location.trim().toLowerCase();
+
+      const coordinates = locationChanged
+        ? await this.resolveCoordinates(request.location, {
+            latitude: property.latitude,
+            longitude: property.longitude,
+          })
+        : {
+            latitude: property.latitude ?? undefined,
+            longitude: property.longitude ?? undefined,
+          };
 
       await property.update({
         title: request.title,
         categoryId: Number(request.categoryId),
         location: request.location,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
         price: request.price,
         priceNpr,
         roi: request.roi,

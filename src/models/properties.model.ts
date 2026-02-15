@@ -31,6 +31,12 @@ export class Property extends Model {
   @Column({ type: DataType.STRING, allowNull: false })
   location!: string;
 
+  @Column({ type: DataType.DOUBLE, allowNull: true })
+  latitude?: number;
+
+  @Column({ type: DataType.DOUBLE, allowNull: true })
+  longitude?: number;
+
   @Column({ type: DataType.STRING, allowNull: false })
   price!: string;
 
