@@ -28,6 +28,6 @@ app.use(express.static(path.join(__dirname, "public")));
 
 sequelize.sync({ alter: true }).then(() => {
   app.listen(3000, () => {
-    console.log("htttp://localhost:3000");
+    console.log("http://localhost:3000");
   });
 });
