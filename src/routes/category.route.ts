@@ -1,5 +1,6 @@
 import { Router } from "express";
 import CategoryController from "@controller/category.controller";
+import { requireAdminAuth } from "../middleware/admin-auth.middleware";
 
 const router = Router();
 
@@ -10,12 +11,12 @@ router.get("/", CategoryController.getAll);
 router.get("/:id", CategoryController.getById);
 
 // POST /api/categories - Create a new category
-router.post("/", CategoryController.create);
+router.post("/", requireAdminAuth, CategoryController.create);
 
 // PUT /api/categories/:id - Update category by ID
-router.put("/:id", CategoryController.update);
+router.put("/:id", requireAdminAuth, CategoryController.update);
 
 // DELETE /api/categories/:id - Delete category by ID
-router.delete("/:id", CategoryController.delete);
+router.delete("/:id", requireAdminAuth, CategoryController.delete);
 
 export { router as categoriesRouter };

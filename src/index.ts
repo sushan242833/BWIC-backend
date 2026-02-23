@@ -9,6 +9,7 @@ import { locationRouter } from "@routes/location.route";
 import { propertiesRouter } from "@routes/properties.route";
 import { recommendationRouter } from "@routes/recommendation.route";
 import { statsRouter } from "@routes/stats.routes";
+import { authRouter } from "@routes/auth.route";
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use("/api/categories", categoriesRouter);
 app.use("/api/locations", locationRouter);
 app.use("/api/contacts", contactRouter);
 app.use("/api/stats", statsRouter);
+app.use("/api/auth", authRouter);
 app.use(express.static(path.join(__dirname, "public")));
 
 sequelize.sync({ alter: true }).then(() => {
