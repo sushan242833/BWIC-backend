@@ -2,14 +2,18 @@ import multer from "multer";
 import path from "path";
 import * as fs from "fs";
 import { Request } from "express";
+import env from "./env";
+
+const uploadDirectory = path.isAbsolute(env.uploads.dir)
+  ? env.uploads.dir
+  : path.resolve(process.cwd(), env.uploads.dir);
 
 const storage = multer.diskStorage({
   destination: function (req, file, callback) {
-    const destination = path.join(__dirname, "../public/uploads");
-    if (!fs.existsSync(destination)) {
-      fs.mkdirSync(destination, { recursive: true });
+    if (!fs.existsSync(uploadDirectory)) {
+      fs.mkdirSync(uploadDirectory, { recursive: true });
     }
-    callback(null, destination);
+    callback(null, uploadDirectory);
   },
   filename: function (req, file, callback) {
     const filename = new Date().getTime();
@@ -30,4 +34,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, callback: any) => {
 export const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
+  limits: {
+    fileSize: env.uploads.maxFileSizeBytes,
+  },
 });

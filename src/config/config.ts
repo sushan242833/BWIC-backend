@@ -2,15 +2,16 @@ import { Sequelize } from "sequelize-typescript";
 import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
 import { ContactMessage } from "@models/contact.model";
+import env from "./env";
 
 const sequelize = new Sequelize({
-  dialect: "postgres",
-  host: "localhost",
-  port: 5432,
-  username: "",
-  password: "",
-  database: "blue_whale_investment_db",
-  logging: true,
+  dialect: env.db.dialect,
+  host: env.db.host,
+  port: env.db.port,
+  username: env.db.username,
+  password: env.db.password,
+  database: env.db.database,
+  logging: env.db.logging,
   models: [Property, Category, ContactMessage],
 });
 
