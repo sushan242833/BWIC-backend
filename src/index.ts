@@ -28,8 +28,14 @@ app.use("/api/contacts", contactRouter);
 app.use("/api/stats", statsRouter);
 app.use(express.static(path.join(__dirname, "public")));
 
-sequelize.sync({ alter: env.sequelize.alterSync }).then(() => {
-  app.listen(env.port, () => {
-    console.log(`Server running at ${env.appBaseUrl}`);
+sequelize
+  .authenticate()
+  .then(() => {
+    app.listen(env.port, () => {
+      console.log(`Server running at ${env.appBaseUrl}`);
+    });
+  })
+  .catch((error: unknown) => {
+    console.error("Failed to connect to the database", error);
+    process.exit(1);
   });
-});

@@ -33,9 +33,6 @@ export const env = {
     dir: process.env.UPLOAD_DIR || "src/public/uploads",
     maxFileSizeBytes: toNumber(process.env.MAX_FILE_SIZE_MB, 5) * 1024 * 1024,
   },
-  sequelize: {
-    alterSync: toBoolean(process.env.DB_SYNC_ALTER, true),
-  },
 };
 
 export default env;

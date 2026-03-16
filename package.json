@@ -7,7 +7,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon --watch src --ext ts --ignore dist --exec \"ts-node --require tsconfig-paths/register src/index.ts\""
+    "dev": "nodemon --watch src --ext ts --ignore dist --exec \"ts-node --require tsconfig-paths/register src/index.ts\"",
+    "db:migrate": "ts-node --require tsconfig-paths/register src/database/migrate.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
