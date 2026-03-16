@@ -7,12 +7,54 @@ import {
   PrimaryKey,
   ForeignKey,
   BelongsTo,
+  CreatedAt,
+  UpdatedAt,
 } from "sequelize-typescript";
+import { Optional } from "sequelize";
 
 import { Category } from "./category.model";
 
-@Table({ tableName: "properties" })
-export class Property extends Model {
+export interface PropertyAttributes {
+  id: number;
+  title: string;
+  categoryId: number;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  price: string;
+  priceNpr?: number;
+  roi: string;
+  roiPercent?: number;
+  status: string;
+  area: string;
+  areaSqft?: number;
+  areaNepali?: string;
+  distanceFromHighway?: number;
+  images: string[];
+  description: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type PropertyCreationAttributes = Optional<
+  PropertyAttributes,
+  | "id"
+  | "latitude"
+  | "longitude"
+  | "priceNpr"
+  | "roiPercent"
+  | "areaSqft"
+  | "areaNepali"
+  | "distanceFromHighway"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+@Table({ tableName: "properties", timestamps: true })
+export class Property extends Model<
+  PropertyAttributes,
+  PropertyCreationAttributes
+> {
   @AutoIncrement
   @PrimaryKey
   @Column
@@ -75,4 +117,10 @@ export class Property extends Model {
 
   @Column({ type: DataType.TEXT, allowNull: false })
   description!: string;
+
+  @CreatedAt
+  createdAt!: Date;
+
+  @UpdatedAt
+  updatedAt!: Date;
 }

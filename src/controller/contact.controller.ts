@@ -1,15 +1,7 @@
 import { Request, Response } from "express";
 import { ContactMessage } from "../models/contact.model";
 import nodemailer from "nodemailer";
-
-interface IContactMessage {
-  name: string;
-  email: string;
-  phone?: string;
-  investmentRange: string;
-  propertyType: string;
-  message?: string;
-}
+import { CreateContactMessageDto } from "@dto/contact.dto";
 
 export class ContactController {
   async getAll(req: Request, res: Response) {
@@ -40,7 +32,7 @@ export class ContactController {
   // Create / Submit contact message
   async submitContactMessage(req: Request, res: Response) {
     try {
-      const request: IContactMessage = req.body;
+      const request = req.body as CreateContactMessageDto;
 
       // Validate required fields
       if (

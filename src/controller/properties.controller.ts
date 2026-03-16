@@ -3,20 +3,11 @@ import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
 import { Op, Order, WhereOptions } from "sequelize";
 import { geocodeLocation } from "@utils/geocoding";
-
-interface IPropertyRequest {
-  title: string;
-  categoryId: number | string;
-  location: string;
-  price: string;
-  roi: string;
-  status: string;
-  area: string;
-  areaNepali?: string;
-  distanceFromHighway?: number | string;
-  images?: string[];
-  description: string;
-}
+import {
+  CreatePropertyDto,
+  PropertyListQueryDto,
+  UpdatePropertyDto,
+} from "@dto/property.dto";
 
 export class PropertyController {
   private async resolveCoordinates(
@@ -47,7 +38,7 @@ export class PropertyController {
     return parsed;
   }
 
-  private buildNumericFields(request: IPropertyRequest) {
+  private buildNumericFields(request: CreatePropertyDto | UpdatePropertyDto) {
     const priceNpr = Math.round(this.parseNumericValue(request.price));
     const roiPercent = this.parseNumericValue(request.roi);
     const areaSqft = this.parseNumericValue(request.area);
@@ -103,7 +94,7 @@ export class PropertyController {
         sort,
         page,
         limit,
-      } = req.query;
+      } = req.query as PropertyListQueryDto;
 
       const where: WhereOptions = {};
 
@@ -220,7 +211,7 @@ export class PropertyController {
 
   async create(req: Request, res: Response) {
     try {
-      const request = req.body as IPropertyRequest;
+      const request = req.body as CreatePropertyDto;
       const imageFiles = req.files as Express.Multer.File[];
 
       if (!imageFiles || imageFiles.length === 0) {
@@ -291,7 +282,7 @@ export class PropertyController {
   async update(req: Request, res: Response) {
     try {
       const id = req.params.id;
-      const request = req.body as IPropertyRequest;
+      const request = req.body as UpdatePropertyDto;
       const imageFiles = req.files as Express.Multer.File[];
 
       const property = await Property.findByPk(id);

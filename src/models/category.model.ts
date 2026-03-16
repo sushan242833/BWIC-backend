@@ -8,10 +8,21 @@ import {
   Unique,
   HasMany,
 } from "sequelize-typescript";
+import { Optional } from "sequelize";
 import { Property } from "@models/properties.model";
 
+export interface CategoryAttributes {
+  id: number;
+  name: string;
+}
+
+export type CategoryCreationAttributes = Optional<CategoryAttributes, "id">;
+
 @Table({ tableName: "categories", timestamps: false })
-export class Category extends Model<Category> {
+export class Category extends Model<
+  CategoryAttributes,
+  CategoryCreationAttributes
+> {
   @PrimaryKey
   @AutoIncrement
   @Column

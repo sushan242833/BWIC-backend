@@ -3,6 +3,7 @@
 import { Request, Response } from "express";
 import { Category } from "@models/category.model";
 import { Property } from "@models/properties.model";
+import { CreateCategoryDto, UpdateCategoryDto } from "@dto/category.dto";
 
 export class CategoryController {
   async getAll(req: Request, res: Response) {
@@ -35,7 +36,7 @@ export class CategoryController {
 
   async create(req: Request, res: Response) {
     try {
-      const { name } = req.body;
+      const { name } = req.body as CreateCategoryDto;
 
       const existing = await Category.findOne({ where: { name } });
       if (existing) {
@@ -44,7 +45,7 @@ export class CategoryController {
           .json({ message: "Category with this name already exists" });
       }
 
-      const category = await Category.create<Category>({ name } as any);
+      const category = await Category.create({ name });
 
       await category.save();
 
@@ -57,7 +58,7 @@ export class CategoryController {
   async update(req: Request, res: Response) {
     try {
       const id = req.params.id;
-      const { name } = req.body;
+      const { name } = req.body as UpdateCategoryDto;
 
       const category = await Category.findByPk(id);
       if (!category) {
