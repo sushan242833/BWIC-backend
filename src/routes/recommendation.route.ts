@@ -11,12 +11,14 @@ const router = Router();
 router.get(
   "/",
   validateRequest({ query: recommendationQuerySchema }),
-  (req, res, next) => RecommendationController.getRecommendations(req, res, next),
+  (req, res, next) =>
+    RecommendationController.getRecommendations(req, res, next),
 );
 router.post(
   "/",
   validateRequest({ body: recommendationBodySchema }),
-  (req, res, next) => RecommendationController.getRecommendations(req, res, next),
+  (req, res, next) =>
+    RecommendationController.getRecommendations(req, res, next),
 );
 
 export { router as recommendationRouter };

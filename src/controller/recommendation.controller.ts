@@ -1,6 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import { Op, WhereOptions } from "sequelize";
 import { Category } from "@models/category.model";
+import {
+  RecommendationRequestDto,
+  RecommendationResultDto,
+} from "@dto/recommendation.dto";
 import { Property } from "@models/properties.model";
 import {
   applyHardFilters,
@@ -10,14 +14,8 @@ import {
 } from "@utils/recommendation";
 import { geocodeLocation } from "@utils/geocoding";
 import { sendSuccess } from "@utils/api-response";
+import { serializePropertySummary } from "@utils/property-serializers";
 import { AppError } from "../middleware/error.middleware";
-
-interface RecommendationRequestBody {
-  mustHave?: RecommendationMustHave;
-  preferences?: RecommendationPreferences;
-  page?: number;
-  limit?: number;
-}
 
 export class RecommendationController {
   private extractQueryString(value: unknown): string | undefined {
@@ -30,7 +28,8 @@ export class RecommendationController {
   }
 
   private parseNumber(value: unknown): number | undefined {
-    if (typeof value === "number") return Number.isNaN(value) ? undefined : value;
+    if (typeof value === "number")
+      return Number.isNaN(value) ? undefined : value;
 
     const raw = this.extractQueryString(value);
     if (!raw) return undefined;
@@ -39,7 +38,7 @@ export class RecommendationController {
     return Number.isNaN(parsed) ? undefined : parsed;
   }
 
-  private buildFromQuery(req: Request): RecommendationRequestBody {
+  private buildFromQuery(req: Request): RecommendationRequestDto {
     return {
       mustHave: {
         location: this.extractQueryString(req.query.location),
@@ -48,7 +47,9 @@ export class RecommendationController {
         maxPrice: this.parseNumber(req.query.maxPrice),
         minRoi: this.parseNumber(req.query.minRoi),
         minArea: this.parseNumber(req.query.minArea),
-        maxDistanceFromHighway: this.parseNumber(req.query.maxDistanceFromHighway),
+        maxDistanceFromHighway: this.parseNumber(
+          req.query.maxDistanceFromHighway,
+        ),
         status: this.extractQueryString(req.query.status),
       },
       preferences: {
@@ -59,14 +60,18 @@ export class RecommendationController {
         budget: this.parseNumber(req.query.budget),
         roiPercent: this.parseNumber(req.query.preferredRoi),
         areaSqft: this.parseNumber(req.query.preferredArea),
-        maxDistanceFromHighway: this.parseNumber(req.query.preferredMaxDistance),
+        maxDistanceFromHighway: this.parseNumber(
+          req.query.preferredMaxDistance,
+        ),
       },
       page: this.parseNumber(req.query.page),
       limit: this.parseNumber(req.query.limit),
     };
   }
 
-  private sanitizeMustHave(input?: RecommendationMustHave): RecommendationMustHave {
+  private sanitizeMustHave(
+    input?: RecommendationMustHave,
+  ): RecommendationMustHave {
     if (!input) return {};
 
     return {
@@ -100,7 +105,10 @@ export class RecommendationController {
 
   async getRecommendations(req: Request, res: Response, next: NextFunction) {
     try {
-      const source = req.method === "GET" ? this.buildFromQuery(req) : (req.body as RecommendationRequestBody);
+      const source =
+        req.method === "GET"
+          ? this.buildFromQuery(req)
+          : (req.body as RecommendationRequestDto);
 
       const mustHave = this.sanitizeMustHave(source.mustHave);
       const preferences = this.sanitizePreferences(source.preferences);
@@ -148,19 +156,31 @@ export class RecommendationController {
       }
 
       if (mustHave.minPrice !== undefined) {
-        where.priceNpr = { ...(where.priceNpr as object), [Op.gte]: mustHave.minPrice };
+        where.priceNpr = {
+          ...(where.priceNpr as object),
+          [Op.gte]: mustHave.minPrice,
+        };
       }
 
       if (mustHave.maxPrice !== undefined) {
-        where.priceNpr = { ...(where.priceNpr as object), [Op.lte]: mustHave.maxPrice };
+        where.priceNpr = {
+          ...(where.priceNpr as object),
+          [Op.lte]: mustHave.maxPrice,
+        };
       }
 
       if (mustHave.minRoi !== undefined) {
-        where.roiPercent = { ...(where.roiPercent as object), [Op.gte]: mustHave.minRoi };
+        where.roiPercent = {
+          ...(where.roiPercent as object),
+          [Op.gte]: mustHave.minRoi,
+        };
       }
 
       if (mustHave.minArea !== undefined) {
-        where.areaSqft = { ...(where.areaSqft as object), [Op.gte]: mustHave.minArea };
+        where.areaSqft = {
+          ...(where.areaSqft as object),
+          [Op.gte]: mustHave.minArea,
+        };
       }
 
       if (mustHave.maxDistanceFromHighway !== undefined) {
@@ -184,16 +204,23 @@ export class RecommendationController {
       const hardFiltered = applyHardFilters(candidates, mustHave);
 
       const ranked = hardFiltered
-        .map((property) => {
+        .map<RecommendationResultDto>((property) => {
           const scored = scoreProperty(property, preferences);
+
           return {
-            property,
+            property: serializePropertySummary(property),
             matchPercentage: scored.matchPercentage,
             score: scored.score,
             explanation: scored.explanation,
+            rankingSummary: scored.rankingSummary,
+            topReasons: scored.topReasons,
+            penalties: scored.penalties,
+            scoreBreakdown: scored.scoreBreakdown,
           };
         })
-        .sort((a, b) => b.score - a.score || b.matchPercentage - a.matchPercentage);
+        .sort(
+          (a, b) => b.score - a.score || b.matchPercentage - a.matchPercentage,
+        );
 
       const total = ranked.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));

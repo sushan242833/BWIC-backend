@@ -194,15 +194,36 @@ const recommendationMustHaveSchema = z
     });
   });
 
-const recommendationPreferencesSchema = z.object({
-  location: optionalTrimmedString(),
-  latitude: optionalNumber("preferences.latitude"),
-  longitude: optionalNumber("preferences.longitude"),
-  locationRadiusKm: optionalNumber("preferences.locationRadiusKm"),
-  budget: optionalNumber("preferences.budget"),
-  roiPercent: optionalNumber("preferences.roiPercent"),
-  areaSqft: optionalNumber("preferences.areaSqft"),
-  maxDistanceFromHighway: optionalNumber("preferences.maxDistanceFromHighway"),
+const recommendationPreferencesSchema = z
+  .object({
+    location: optionalTrimmedString(),
+    latitude: optionalNumber("preferences.latitude"),
+    longitude: optionalNumber("preferences.longitude"),
+    locationRadiusKm: optionalNumber("preferences.locationRadiusKm"),
+    budget: optionalNumber("preferences.budget"),
+    roiPercent: optionalNumber("preferences.roiPercent"),
+    areaSqft: optionalNumber("preferences.areaSqft"),
+    maxDistanceFromHighway: optionalNumber(
+      "preferences.maxDistanceFromHighway",
+    ),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      (value.latitude !== undefined && value.longitude === undefined) ||
+      (value.latitude === undefined && value.longitude !== undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["latitude"],
+        message:
+          "preferences.latitude and preferences.longitude must be provided together",
+      });
+    }
+  });
+
+const recommendationPaginationSchema = z.object({
+  page: optionalNumber("page", 1),
+  limit: optionalNumber("limit", 1),
 });
 
 export const recommendationQuerySchema = z
@@ -223,9 +244,8 @@ export const recommendationQuerySchema = z
     preferredRoi: optionalNumber("preferredRoi"),
     preferredArea: optionalNumber("preferredArea"),
     preferredMaxDistance: optionalNumber("preferredMaxDistance"),
-    page: optionalNumber("page", 1),
-    limit: optionalNumber("limit", 1),
   })
+  .merge(recommendationPaginationSchema)
   .superRefine((value, ctx) => {
     validatePropertyFilterCombinations(value, (path, message) => {
       ctx.addIssue({
@@ -234,11 +254,25 @@ export const recommendationQuerySchema = z
         message,
       });
     });
+
+    if (
+      (value.preferredLatitude !== undefined &&
+        value.preferredLongitude === undefined) ||
+      (value.preferredLatitude === undefined &&
+        value.preferredLongitude !== undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["preferredLatitude"],
+        message:
+          "preferredLatitude and preferredLongitude must be provided together",
+      });
+    }
   });
 
-export const recommendationBodySchema = z.object({
-  mustHave: recommendationMustHaveSchema.optional(),
-  preferences: recommendationPreferencesSchema.optional(),
-  page: optionalNumber("page", 1),
-  limit: optionalNumber("limit", 1),
-});
+export const recommendationBodySchema = z
+  .object({
+    mustHave: recommendationMustHaveSchema.optional(),
+    preferences: recommendationPreferencesSchema.optional(),
+  })
+  .merge(recommendationPaginationSchema);

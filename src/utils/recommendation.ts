@@ -1,24 +1,13 @@
-export interface RecommendationMustHave {
-  location?: string;
-  categoryId?: number;
-  minPrice?: number;
-  maxPrice?: number;
-  minRoi?: number;
-  minArea?: number;
-  maxDistanceFromHighway?: number;
-  status?: string;
-}
+import {
+  RecommendationExplanationDto,
+  RecommendationMustHaveDto,
+  RecommendationPreferencesDto,
+  RecommendationScoreBreakdownDto,
+} from "@dto/recommendation.dto";
 
-export interface RecommendationPreferences {
-  location?: string;
-  latitude?: number;
-  longitude?: number;
-  locationRadiusKm?: number;
-  budget?: number;
-  roiPercent?: number;
-  areaSqft?: number;
-  maxDistanceFromHighway?: number;
-}
+export interface RecommendationMustHave extends RecommendationMustHaveDto {}
+
+export interface RecommendationPreferences extends RecommendationPreferencesDto {}
 
 export interface RecommendationProperty {
   id?: number;
@@ -34,16 +23,15 @@ export interface RecommendationProperty {
   distanceFromHighway?: number | null;
 }
 
-export interface RecommendationExplanation {
-  reason: string;
-  points: number;
-}
-
 export interface RecommendationScore {
   score: number;
   maxPossible: number;
   matchPercentage: number;
-  explanation: RecommendationExplanation[];
+  explanation: RecommendationExplanationDto[];
+  rankingSummary: string;
+  topReasons: string[];
+  penalties: string[];
+  scoreBreakdown?: RecommendationScoreBreakdownDto;
 }
 
 const WEIGHTS = {
@@ -56,9 +44,67 @@ const WEIGHTS = {
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
+const roundScore = (value: number) => round2(Math.max(0, value));
+
 const safeRatioScore = (weight: number, deltaRatio: number): number => {
   const score = weight * Math.max(0, 1 - deltaRatio);
   return round2(score);
+};
+
+const toPercentOfWeight = (points: number, weight: number) =>
+  weight > 0 ? round2((points / weight) * 100) : 0;
+
+const formatCompactNumber = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: value >= 100 ? 0 : 2,
+  }).format(round2(value));
+
+const createExplanation = (
+  category: keyof RecommendationScoreBreakdownDto,
+  reason: string,
+  points: number,
+  sentiment: RecommendationExplanationDto["sentiment"],
+): RecommendationExplanationDto => ({
+  category,
+  reason,
+  points: roundScore(points),
+  sentiment,
+});
+
+const addBreakdownValue = (
+  scoreBreakdown: RecommendationScoreBreakdownDto,
+  key: keyof RecommendationScoreBreakdownDto,
+  value: number,
+) => {
+  scoreBreakdown[key] = roundScore(value);
+};
+
+const pushUnique = (items: string[], value: string | undefined) => {
+  if (!value || items.includes(value)) {
+    return;
+  }
+
+  items.push(value);
+};
+
+const buildRankingSummary = (
+  topReasons: string[],
+  penalties: string[],
+  matchPercentage: number,
+): string => {
+  if (topReasons.length === 0 && penalties.length === 0) {
+    return "This property was ranked using the available filters, but no preference-based scoring could be applied.";
+  }
+
+  if (topReasons.length === 0) {
+    return `This property stayed in the results, but ranked lower at ${matchPercentage}% because it did not align well with your preferences.`;
+  }
+
+  if (penalties.length === 0) {
+    return `This property ranked strongly at ${matchPercentage}% because ${topReasons[0].charAt(0).toLowerCase()}${topReasons[0].slice(1)}.`;
+  }
+
+  return `This property ranked at ${matchPercentage}% because ${topReasons[0].charAt(0).toLowerCase()}${topReasons[0].slice(1)}, though ${penalties[0].charAt(0).toLowerCase()}${penalties[0].slice(1)}.`;
 };
 
 const haversineKm = (
@@ -84,10 +130,10 @@ const haversineKm = (
   return earthRadiusKm * c;
 };
 
-export const applyHardFilters = (
-  properties: RecommendationProperty[],
+export const applyHardFilters = <T extends RecommendationProperty>(
+  properties: T[],
   mustHave: RecommendationMustHave,
-): RecommendationProperty[] => {
+): T[] => {
   return properties.filter((property) => {
     if (
       mustHave.location &&
@@ -154,7 +200,10 @@ export const scoreProperty = (
   property: RecommendationProperty,
   preferences: RecommendationPreferences,
 ): RecommendationScore => {
-  const explanation: RecommendationExplanation[] = [];
+  const explanation: RecommendationExplanationDto[] = [];
+  const topReasons: string[] = [];
+  const penalties: string[] = [];
+  const scoreBreakdown: RecommendationScoreBreakdownDto = {};
   let score = 0;
   let maxPossible = 0;
 
@@ -174,9 +223,9 @@ export const scoreProperty = (
     if (
       property.latitude !== null &&
       property.latitude !== undefined &&
-      property.longitude !== null &&
-      property.longitude !== undefined
-    ) {
+        property.longitude !== null &&
+        property.longitude !== undefined
+      ) {
       const distanceKm = haversineKm(
         preferences.latitude,
         preferences.longitude,
@@ -184,31 +233,64 @@ export const scoreProperty = (
         property.longitude,
       );
       points = safeRatioScore(WEIGHTS.location, distanceKm / radiusKm);
-      explanation.push({
-        reason: `Location scored by distance (${round2(distanceKm)} km from preferred point, radius ${radiusKm} km)`,
-        points,
-      });
+      const percent = toPercentOfWeight(points, WEIGHTS.location);
+      const reason =
+        distanceKm <= radiusKm
+          ? `Near your preferred location at about ${formatCompactNumber(distanceKm)} km away`
+          : `Farther from your preferred location at about ${formatCompactNumber(distanceKm)} km away`;
+      explanation.push(
+        createExplanation(
+          "location",
+          reason,
+          points,
+          distanceKm <= radiusKm ? "positive" : "negative",
+        ),
+      );
+      if (percent >= 60) {
+        pushUnique(topReasons, reason);
+      } else {
+        pushUnique(penalties, reason);
+      }
     } else {
       if (preferences.location) {
         const matched = property.location
           .toLowerCase()
           .includes(preferences.location.toLowerCase());
         points = matched ? WEIGHTS.location : 0;
-        explanation.push({
-          reason: matched
-            ? `Property coordinates missing, text location fallback matched (${preferences.location})`
-            : `Property coordinates missing, text location fallback did not match (${preferences.location})`,
-          points,
-        });
+        const reason = matched
+          ? `Near your preferred location based on the listed area`
+          : `Does not appear to be near your preferred location based on the listed area`;
+        explanation.push(
+          createExplanation(
+            "location",
+            reason,
+            points,
+            matched ? "positive" : "negative",
+          ),
+        );
+        if (matched) {
+          pushUnique(topReasons, reason);
+        } else {
+          pushUnique(penalties, reason);
+        }
       } else {
-        explanation.push({
-          reason: "Property coordinates missing, could not score geo-distance",
-          points: 0,
-        });
+        explanation.push(
+          createExplanation(
+            "location",
+            "Location coordinates are missing, so distance preference could not be scored",
+            0,
+            "neutral",
+          ),
+        );
+        pushUnique(
+          penalties,
+          "Location coordinates are missing, so proximity could not be confirmed",
+        );
       }
     }
 
     score += points;
+    addBreakdownValue(scoreBreakdown, "location", points);
   } else if (preferences.location) {
     maxPossible += WEIGHTS.location;
     const matched = property.location
@@ -216,12 +298,23 @@ export const scoreProperty = (
       .includes(preferences.location.toLowerCase());
     const points = matched ? WEIGHTS.location : 0;
     score += points;
-    explanation.push({
-      reason: matched
-        ? `Location text matched preference (${preferences.location})`
-        : `Location text did not match preference (${preferences.location})`,
-      points,
-    });
+    const reason = matched
+      ? "Near your preferred location"
+      : "Not in your preferred location";
+    explanation.push(
+      createExplanation(
+        "location",
+        reason,
+        points,
+        matched ? "positive" : "negative",
+      ),
+    );
+    if (matched) {
+      pushUnique(topReasons, reason);
+    } else {
+      pushUnique(penalties, reason);
+    }
+    addBreakdownValue(scoreBreakdown, "location", points);
   }
 
   if (preferences.budget !== undefined && preferences.budget > 0) {
@@ -235,13 +328,35 @@ export const scoreProperty = (
             Math.abs(price - preferences.budget) / preferences.budget,
           );
     score += points;
-    explanation.push({
-      reason:
-        price === null || price === undefined
-          ? "Price missing, could not score budget closeness"
-          : `Budget closeness scored against NPR ${preferences.budget}`,
-      points,
-    });
+    let reason = "Price data missing, so budget preference could not be scored";
+    let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
+
+    if (price !== null && price !== undefined) {
+      const differenceRatio = Math.abs(price - preferences.budget) / preferences.budget;
+      if (differenceRatio <= 0.1) {
+        reason = "Close to your preferred budget";
+        sentiment = "positive";
+      } else if (price <= preferences.budget) {
+        reason = "Within your preferred budget, but not especially close";
+        sentiment = points > 0 ? "positive" : "negative";
+      } else {
+        reason = "Above your preferred budget";
+        sentiment = points > 0 ? "neutral" : "negative";
+      }
+    }
+
+    explanation.push(createExplanation("price", reason, points, sentiment));
+    if (price === null || price === undefined) {
+      pushUnique(
+        penalties,
+        "Price data is missing, so budget fit could not be confirmed",
+      );
+    } else if (toPercentOfWeight(points, WEIGHTS.price) >= 60) {
+      pushUnique(topReasons, reason);
+    } else {
+      pushUnique(penalties, reason);
+    }
+    addBreakdownValue(scoreBreakdown, "price", points);
   }
 
   if (preferences.roiPercent !== undefined && preferences.roiPercent > 0) {
@@ -255,13 +370,31 @@ export const scoreProperty = (
           : round2(WEIGHTS.roi * Math.max(0, roi / preferences.roiPercent));
     }
     score += points;
-    explanation.push({
-      reason:
-        roi === null || roi === undefined
-          ? "ROI missing, could not score ROI preference"
-          : `ROI scored against preferred ${preferences.roiPercent}%`,
-      points,
-    });
+    let reason = "ROI data missing, so ROI preference could not be scored";
+    let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
+
+    if (roi !== null && roi !== undefined) {
+      if (roi >= preferences.roiPercent) {
+        reason = "Meets your ROI target";
+        sentiment = "positive";
+      } else {
+        reason = "Below your ROI target";
+        sentiment = points > 0 ? "neutral" : "negative";
+      }
+    }
+
+    explanation.push(createExplanation("roi", reason, points, sentiment));
+    if (roi === null || roi === undefined) {
+      pushUnique(
+        penalties,
+        "ROI data is missing, so return potential could not be confirmed",
+      );
+    } else if (toPercentOfWeight(points, WEIGHTS.roi) >= 60) {
+      pushUnique(topReasons, reason);
+    } else {
+      pushUnique(penalties, reason);
+    }
+    addBreakdownValue(scoreBreakdown, "roi", points);
   }
 
   if (preferences.areaSqft !== undefined && preferences.areaSqft > 0) {
@@ -275,13 +408,37 @@ export const scoreProperty = (
             Math.abs(area - preferences.areaSqft) / preferences.areaSqft,
           );
     score += points;
-    explanation.push({
-      reason:
-        area === null || area === undefined
-          ? "Area missing, could not score area preference"
-          : `Area closeness scored against ${preferences.areaSqft} sq ft`,
-      points,
-    });
+    let reason = "Area data missing, so area preference could not be scored";
+    let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
+
+    if (area !== null && area !== undefined) {
+      if (
+        Math.abs(area - preferences.areaSqft) / preferences.areaSqft <=
+        0.15
+      ) {
+        reason = "Close to your preferred property size";
+        sentiment = "positive";
+      } else if (area >= preferences.areaSqft) {
+        reason = "Larger than your preferred property size";
+        sentiment = points > 0 ? "neutral" : "negative";
+      } else {
+        reason = "Smaller than your preferred property size";
+        sentiment = points > 0 ? "neutral" : "negative";
+      }
+    }
+
+    explanation.push(createExplanation("area", reason, points, sentiment));
+    if (area === null || area === undefined) {
+      pushUnique(
+        penalties,
+        "Area data is missing, so size fit could not be confirmed",
+      );
+    } else if (toPercentOfWeight(points, WEIGHTS.area) >= 60) {
+      pushUnique(topReasons, reason);
+    } else {
+      pushUnique(penalties, reason);
+    }
+    addBreakdownValue(scoreBreakdown, "area", points);
   }
 
   if (
@@ -305,22 +462,48 @@ export const scoreProperty = (
     }
 
     score += points;
-    explanation.push({
-      reason:
-        distance === null || distance === undefined
-          ? "Distance from highway missing, could not score distance preference"
-          : `Distance scored against preferred max ${preferences.maxDistanceFromHighway}m`,
-      points,
-    });
+    let reason =
+      "Distance from highway data missing, so access preference could not be scored";
+    let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
+
+    if (distance !== null && distance !== undefined) {
+      if (distance <= preferences.maxDistanceFromHighway) {
+        reason = "Within your preferred distance from the highway";
+        sentiment = "positive";
+      } else {
+        reason = "Farther from highway than preferred";
+        sentiment = points > 0 ? "neutral" : "negative";
+      }
+    }
+
+    explanation.push(createExplanation("distance", reason, points, sentiment));
+    if (distance === null || distance === undefined) {
+      pushUnique(
+        penalties,
+        "Distance from highway data is missing, so accessibility fit could not be confirmed",
+      );
+    } else if (toPercentOfWeight(points, WEIGHTS.distance) >= 60) {
+      pushUnique(topReasons, reason);
+    } else {
+      pushUnique(penalties, reason);
+    }
+    addBreakdownValue(scoreBreakdown, "distance", points);
   }
 
   const matchPercentage =
     maxPossible === 0 ? 0 : Math.round((score / maxPossible) * 100);
+  const normalizedScore = round2(score);
+  const normalizedBreakdown =
+    Object.keys(scoreBreakdown).length > 0 ? scoreBreakdown : undefined;
 
   return {
-    score: round2(score),
+    score: normalizedScore,
     maxPossible,
     matchPercentage,
     explanation,
+    rankingSummary: buildRankingSummary(topReasons, penalties, matchPercentage),
+    topReasons,
+    penalties,
+    scoreBreakdown: normalizedBreakdown,
   };
 };
