@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { autocompleteLocations, getPlaceDetails } from "@utils/geocoding";
+import { sendSuccess } from "@utils/api-response";
 import { AppError } from "../middleware/error.middleware";
 
 export class LocationController {
@@ -17,11 +18,17 @@ export class LocationController {
       const query = this.extractQueryString(req.query.q)?.trim() || "";
 
       if (query.length < 2) {
-        return res.status(200).json({ data: [] });
+        return sendSuccess(res, {
+          message: "Location suggestions fetched successfully",
+          data: [],
+        });
       }
 
       const suggestions = await autocompleteLocations(query);
-      return res.status(200).json({ data: suggestions });
+      return sendSuccess(res, {
+        message: "Location suggestions fetched successfully",
+        data: suggestions,
+      });
     } catch (error) {
       next(error);
     }
@@ -39,8 +46,7 @@ export class LocationController {
         return next(new AppError("Place details not found", 404));
       }
 
-      return res.status(200).json({
-        success: true,
+      return sendSuccess(res, {
         message: "Place details fetched successfully",
         data: details,
       });

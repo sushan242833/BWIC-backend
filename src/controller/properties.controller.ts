@@ -9,6 +9,7 @@ import {
   UpdatePropertyDto,
 } from "@dto/property.dto";
 import { AppError } from "../middleware/error.middleware";
+import { sendSuccess } from "@utils/api-response";
 
 export class PropertyController {
   private async resolveCoordinates(
@@ -190,7 +191,8 @@ export class PropertyController {
 
       const totalPages = Math.max(1, Math.ceil(count / limitValue));
 
-      res.status(200).json({
+      return sendSuccess(res, {
+        message: "Properties fetched successfully",
         data: rows,
         pagination: {
           page: pageValue,
@@ -244,7 +246,11 @@ export class PropertyController {
         description: request.description,
       });
 
-      res.status(201).json(newProperty);
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: "Property created successfully",
+        data: newProperty,
+      });
     } catch (error) {
       next(error);
     }
@@ -268,7 +274,10 @@ export class PropertyController {
         return next(new AppError("Property not found", 404));
       }
 
-      res.status(200).json(property);
+      return sendSuccess(res, {
+        message: "Property fetched successfully",
+        data: property,
+      });
     } catch (error) {
       next(error);
     }
@@ -325,7 +334,10 @@ export class PropertyController {
         description: request.description,
       });
 
-      res.status(200).json(property);
+      return sendSuccess(res, {
+        message: "Property updated successfully",
+        data: property,
+      });
     } catch (error) {
       next(error);
     }
@@ -340,7 +352,9 @@ export class PropertyController {
       }
 
       await property.destroy();
-      res.status(204).send();
+      return sendSuccess(res, {
+        message: "Property deleted successfully",
+      });
     } catch (error) {
       next(error);
     }

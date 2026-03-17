@@ -5,6 +5,7 @@ import { Category } from "@models/category.model";
 import { Property } from "@models/properties.model";
 import { CreateCategoryDto, UpdateCategoryDto } from "@dto/category.dto";
 import { AppError } from "../middleware/error.middleware";
+import { sendSuccess } from "@utils/api-response";
 
 export class CategoryController {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -12,7 +13,10 @@ export class CategoryController {
       const categories = await Category.findAll({
         include: [{ model: Property }],
       });
-      res.status(200).json(categories);
+      return sendSuccess(res, {
+        message: "Categories fetched successfully",
+        data: categories,
+      });
     } catch (error) {
       next(error);
     }
@@ -29,7 +33,10 @@ export class CategoryController {
         return next(new AppError("Category not found", 404));
       }
 
-      res.status(200).json(category);
+      return sendSuccess(res, {
+        message: "Category fetched successfully",
+        data: category,
+      });
     } catch (error) {
       next(error);
     }
@@ -50,7 +57,11 @@ export class CategoryController {
 
       await category.save();
 
-      res.status(201).json(category);
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: "Category created successfully",
+        data: category,
+      });
     } catch (error) {
       next(error);
     }
@@ -67,7 +78,10 @@ export class CategoryController {
       }
 
       await category.update({ name });
-      res.status(200).json(category);
+      return sendSuccess(res, {
+        message: "Category updated successfully",
+        data: category,
+      });
     } catch (error) {
       next(error);
     }
@@ -83,7 +97,9 @@ export class CategoryController {
       }
 
       await category.destroy();
-      res.status(204).send();
+      return sendSuccess(res, {
+        message: "Category deleted successfully",
+      });
     } catch (error) {
       next(error);
     }

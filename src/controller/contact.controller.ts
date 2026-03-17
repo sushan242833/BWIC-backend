@@ -3,12 +3,16 @@ import { ContactMessage } from "../models/contact.model";
 import nodemailer from "nodemailer";
 import { CreateContactMessageDto } from "@dto/contact.dto";
 import { AppError } from "../middleware/error.middleware";
+import { sendSuccess } from "@utils/api-response";
 
 export class ContactController {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const contacts = await ContactMessage.findAll();
-      res.status(200).json(contacts);
+      return sendSuccess(res, {
+        message: "Contact messages fetched successfully",
+        data: contacts,
+      });
     } catch (error) {
       next(error);
     }
@@ -23,7 +27,10 @@ export class ContactController {
         return next(new AppError("Contact message not found", 404));
       }
 
-      res.status(200).json(contact);
+      return sendSuccess(res, {
+        message: "Contact message fetched successfully",
+        data: contact,
+      });
     } catch (error) {
       next(error);
     }
@@ -75,7 +82,8 @@ export class ContactController {
       // Send notification email
       await transporter.sendMail(mailOptions);
 
-      return res.status(201).json({
+      return sendSuccess(res, {
+        statusCode: 201,
         message: "Contact message received and notification email sent",
         data: contactMessage,
       });

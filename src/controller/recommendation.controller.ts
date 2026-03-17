@@ -9,6 +9,7 @@ import {
   scoreProperty,
 } from "@utils/recommendation";
 import { geocodeLocation } from "@utils/geocoding";
+import { sendSuccess } from "@utils/api-response";
 import { AppError } from "../middleware/error.middleware";
 
 interface RecommendationRequestBody {
@@ -199,7 +200,8 @@ export class RecommendationController {
       const offset = (page - 1) * limit;
       const data = ranked.slice(offset, offset + limit);
 
-      return res.status(200).json({
+      return sendSuccess(res, {
+        message: "Recommendations fetched successfully",
         data,
         pagination: {
           page,

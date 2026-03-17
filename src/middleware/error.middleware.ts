@@ -39,6 +39,7 @@ export const errorHandler = (
   }
 
   const response: Record<string, unknown> = {
+    success: false,
     message: appError.message,
   };
 
