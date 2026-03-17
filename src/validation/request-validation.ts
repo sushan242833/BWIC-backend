@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { ZodError, ZodTypeAny } from "zod";
+import { AppError } from "../middleware/error.middleware";
 
 type RequestSchema = {
   body?: ZodTypeAny;
@@ -52,7 +53,10 @@ export const validateRequest =
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        return res.status(400).json(buildErrorResponse(error));
+        const validationError = buildErrorResponse(error);
+        return next(
+          new AppError(validationError.message, 400, validationError.errors),
+        );
       }
 
       next(error);

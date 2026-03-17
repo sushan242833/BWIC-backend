@@ -1,5 +1,6 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { autocompleteLocations, getPlaceDetails } from "@utils/geocoding";
+import { AppError } from "../middleware/error.middleware";
 
 export class LocationController {
   private extractQueryString(value: unknown): string | undefined {
@@ -11,7 +12,7 @@ export class LocationController {
     return undefined;
   }
 
-  async autocomplete(req: Request, res: Response) {
+  async autocomplete(req: Request, res: Response, next: NextFunction) {
     try {
       const query = this.extractQueryString(req.query.q)?.trim() || "";
 
@@ -22,32 +23,20 @@ export class LocationController {
       const suggestions = await autocompleteLocations(query);
       return res.status(200).json({ data: suggestions });
     } catch (error) {
-      console.error("Failed to autocomplete locations:", error);
-      return res.status(500).json({
-        message: "Failed to autocomplete locations",
-        error: error instanceof Error ? error.message : String(error),
-      });
+      next(error);
     }
   }
 
-  async placeDetails(req: Request, res: Response) {
+  async placeDetails(req: Request, res: Response, next: NextFunction) {
     try {
       const placeId = this.extractQueryString(req.query.placeId)?.trim() || "";
       if (!placeId) {
-        return res.status(400).json({
-          success: false,
-          message: "placeId query parameter is required",
-          data: null,
-        });
+        return next(new AppError("placeId query parameter is required", 400));
       }
 
       const details = await getPlaceDetails(placeId);
       if (!details) {
-        return res.status(404).json({
-          success: false,
-          message: "Place details not found",
-          data: null,
-        });
+        return next(new AppError("Place details not found", 404));
       }
 
       return res.status(200).json({
@@ -56,12 +45,7 @@ export class LocationController {
         data: details,
       });
     } catch (error) {
-      console.error("Failed to fetch place details:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch place details",
-        error: error instanceof Error ? error.message : String(error),
-      });
+      next(error);
     }
   }
 }

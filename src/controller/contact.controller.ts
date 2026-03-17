@@ -1,48 +1,37 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { ContactMessage } from "../models/contact.model";
 import nodemailer from "nodemailer";
 import { CreateContactMessageDto } from "@dto/contact.dto";
+import { AppError } from "../middleware/error.middleware";
 
 export class ContactController {
-  async getAll(req: Request, res: Response) {
+  async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const contacts = await ContactMessage.findAll();
       res.status(200).json(contacts);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch contacts", error });
+      next(error);
     }
   }
 
-  async getById(req: Request, res: Response) {
+  async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
       const contact = await ContactMessage.findByPk(id);
 
       if (!contact) {
-        return res.status(404).json({ message: "Contact message not found" });
+        return next(new AppError("Contact message not found", 404));
       }
 
       res.status(200).json(contact);
     } catch (error) {
-      res
-        .status(500)
-        .json({ message: "Failed to fetch contact message", error });
+      next(error);
     }
   }
   // Create / Submit contact message
-  async submitContactMessage(req: Request, res: Response) {
+  async submitContactMessage(req: Request, res: Response, next: NextFunction) {
     try {
       const request = req.body as CreateContactMessageDto;
-
-      // Validate required fields
-      if (
-        !request.name ||
-        !request.email ||
-        !request.investmentRange ||
-        !request.propertyType
-      ) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
 
       // Save contact message to DB
       const contactMessage = new ContactMessage();
@@ -91,8 +80,7 @@ export class ContactController {
         data: contactMessage,
       });
     } catch (error) {
-      console.error("Error saving contact message or sending email:", error);
-      return res.status(500).json({ message: "Server error" });
+      next(error);
     }
   }
 }

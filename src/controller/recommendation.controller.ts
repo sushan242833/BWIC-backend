@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { Op, WhereOptions } from "sequelize";
 import { Category } from "@models/category.model";
 import { Property } from "@models/properties.model";
@@ -9,6 +9,7 @@ import {
   scoreProperty,
 } from "@utils/recommendation";
 import { geocodeLocation } from "@utils/geocoding";
+import { AppError } from "../middleware/error.middleware";
 
 interface RecommendationRequestBody {
   mustHave?: RecommendationMustHave;
@@ -96,7 +97,7 @@ export class RecommendationController {
     };
   }
 
-  async getRecommendations(req: Request, res: Response) {
+  async getRecommendations(req: Request, res: Response, next: NextFunction) {
     try {
       const source = req.method === "GET" ? this.buildFromQuery(req) : (req.body as RecommendationRequestBody);
 
@@ -123,9 +124,12 @@ export class RecommendationController {
         mustHave.maxPrice !== undefined &&
         mustHave.minPrice > mustHave.maxPrice
       ) {
-        return res.status(400).json({
-          message: "Invalid constraints: minPrice cannot be greater than maxPrice",
-        });
+        return next(
+          new AppError(
+            "Invalid constraints: minPrice cannot be greater than maxPrice",
+            400,
+          ),
+        );
       }
 
       const where: WhereOptions = {};
@@ -207,11 +211,7 @@ export class RecommendationController {
         },
       });
     } catch (error) {
-      console.error("Failed to build recommendations:", error);
-      return res.status(500).json({
-        message: "Failed to build recommendations",
-        error: error instanceof Error ? error.message : String(error),
-      });
+      next(error);
     }
   }
 }

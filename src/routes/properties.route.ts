@@ -11,24 +11,32 @@ import {
 
 const router = express.Router();
 
-router.get("/", validateRequest({ query: propertyListQuerySchema }), (req, res) =>
-  PropertyController.getAll(req, res),
+router.get(
+  "/",
+  validateRequest({ query: propertyListQuerySchema }),
+  (req, res, next) => PropertyController.getAll(req, res, next),
 );
-router.get("/:id", validateRequest({ params: idParamSchema }), (req, res) =>
-  PropertyController.getById(req, res),
+router.get(
+  "/:id",
+  validateRequest({ params: idParamSchema }),
+  (req, res, next) => PropertyController.getById(req, res, next),
 );
-router.delete("/:id", validateRequest({ params: idParamSchema }), (req, res) =>
-  PropertyController.delete(req, res),
+router.delete(
+  "/:id",
+  validateRequest({ params: idParamSchema }),
+  (req, res, next) => PropertyController.delete(req, res, next),
 );
-router.post("/", upload.array("images", 10), validateRequest({ body: createPropertySchema }), (req, res) =>
-  PropertyController.create(req, res),
+router.post(
+  "/",
+  upload.array("images", 10),
+  validateRequest({ body: createPropertySchema }),
+  (req, res, next) => PropertyController.create(req, res, next),
 );
 router.put(
   "/:id",
   upload.array("images", 10),
   validateRequest({ params: idParamSchema, body: updatePropertySchema }),
-  (req, res) =>
-  PropertyController.update(req, res),
+  (req, res, next) => PropertyController.update(req, res, next),
 );
 
 export { router as propertiesRouter };

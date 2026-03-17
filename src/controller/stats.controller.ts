@@ -1,9 +1,9 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
 
 export class StatsController {
-  async getStats(req: Request, res: Response) {
+  async getStats(req: Request, res: Response, next: NextFunction) {
     try {
       const totalProperties = await Property.count();
       const totalCategories = await Category.count();
@@ -13,8 +13,7 @@ export class StatsController {
         totalCategories,
       });
     } catch (error) {
-      console.error("Failed to fetch stats:", error);
-      res.status(500).json({ message: "Failed to fetch stats", error });
+      next(error);
     }
   }
 }

@@ -9,6 +9,7 @@ import { propertiesRouter } from "@routes/properties.route";
 import { recommendationRouter } from "@routes/recommendation.route";
 import { statsRouter } from "@routes/stats.routes";
 import env from "@config/env";
+import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 
 const app = express();
 
@@ -27,6 +28,8 @@ app.use("/api/locations", locationRouter);
 app.use("/api/contacts", contactRouter);
 app.use("/api/stats", statsRouter);
 app.use(express.static(path.join(__dirname, "public")));
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 sequelize
   .authenticate()

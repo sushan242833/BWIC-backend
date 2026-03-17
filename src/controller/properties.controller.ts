@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
 import { Op, Order, WhereOptions } from "sequelize";
@@ -8,6 +8,7 @@ import {
   PropertyListQueryDto,
   UpdatePropertyDto,
 } from "@dto/property.dto";
+import { AppError } from "../middleware/error.middleware";
 
 export class PropertyController {
   private async resolveCoordinates(
@@ -80,7 +81,7 @@ export class PropertyController {
     return Number.isNaN(parsed) ? undefined : parsed;
   }
 
-  async getAll(req: Request, res: Response) {
+  async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const {
         location,
@@ -201,23 +202,17 @@ export class PropertyController {
         },
       });
     } catch (error) {
-      console.error("Failed to fetch properties:", error);
-      res.status(500).json({
-        message: "Failed to fetch properties",
-        error: error instanceof Error ? error.message : String(error),
-      });
+      next(error);
     }
   }
 
-  async create(req: Request, res: Response) {
+  async create(req: Request, res: Response, next: NextFunction) {
     try {
       const request = req.body as CreatePropertyDto;
       const imageFiles = req.files as Express.Multer.File[];
 
       if (!imageFiles || imageFiles.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "At least one image is required" });
+        return next(new AppError("At least one image is required", 400));
       }
 
       const imagePaths = imageFiles.map((file) => `/uploads/${file.filename}`);
@@ -251,11 +246,11 @@ export class PropertyController {
 
       res.status(201).json(newProperty);
     } catch (error) {
-      res.status(400).json({ message: "Failed to create property", error });
+      next(error);
     }
   }
 
-  async getById(req: Request, res: Response) {
+  async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
 
@@ -270,16 +265,16 @@ export class PropertyController {
       });
 
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return next(new AppError("Property not found", 404));
       }
 
       res.status(200).json(property);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch property", error });
+      next(error);
     }
   }
 
-  async update(req: Request, res: Response) {
+  async update(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
       const request = req.body as UpdatePropertyDto;
@@ -287,7 +282,7 @@ export class PropertyController {
 
       const property = await Property.findByPk(id);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return next(new AppError("Property not found", 404));
       }
 
       const newImages = imageFiles?.map((file) => `/uploads/${file.filename}`);
@@ -332,22 +327,22 @@ export class PropertyController {
 
       res.status(200).json(property);
     } catch (error) {
-      res.status(400).json({ message: "Failed to update property", error });
+      next(error);
     }
   }
 
-  async delete(req: Request, res: Response) {
+  async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
       const property = await Property.findByPk(id);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return next(new AppError("Property not found", 404));
       }
 
       await property.destroy();
       res.status(204).send();
     } catch (error) {
-      res.status(400).json({ message: "Failed to delete property", error });
+      next(error);
     }
   }
 }
