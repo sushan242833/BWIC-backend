@@ -3,6 +3,7 @@ import path from "path";
 import * as fs from "fs";
 import { Request } from "express";
 import env from "./env";
+import { PROPERTY_IMAGE_UPLOAD_LIMIT } from "@utils/property-images";
 
 const uploadDirectory = path.isAbsolute(env.uploads.dir)
   ? env.uploads.dir
@@ -36,5 +37,6 @@ export const upload = multer({
   fileFilter: fileFilter,
   limits: {
     fileSize: env.uploads.maxFileSizeBytes,
+    files: PROPERTY_IMAGE_UPLOAD_LIMIT,
   },
 });

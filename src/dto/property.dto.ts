@@ -1,3 +1,5 @@
+import type { PropertyFilterQuery } from "@utils/property-filters";
+
 export interface CreatePropertyDto {
   title: string;
   categoryId: number | string;
@@ -13,17 +15,8 @@ export interface CreatePropertyDto {
 }
 
 export interface UpdatePropertyDto extends CreatePropertyDto {}
+export type PropertyListQueryDto = PropertyFilterQuery;
 
-export interface PropertyListQueryDto {
-  location?: string | string[];
-  categoryId?: string | string[];
-  minPrice?: string | string[];
-  maxPrice?: string | string[];
-  minRoi?: string | string[];
-  minArea?: string | string[];
-  maxDistanceFromHighway?: string | string[];
-  status?: string | string[];
-  sort?: string | string[];
-  page?: string | string[];
-  limit?: string | string[];
+export interface UpdatePropertyRequestDto extends UpdatePropertyDto {
+  existingImages?: string[];
 }

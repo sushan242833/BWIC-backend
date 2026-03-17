@@ -1,21 +1,44 @@
 // src/controllers/category.controller.ts
 
 import { NextFunction, Request, Response } from "express";
+import { col, fn } from "sequelize";
 import { Category } from "@models/category.model";
 import { Property } from "@models/properties.model";
 import { CreateCategoryDto, UpdateCategoryDto } from "@dto/category.dto";
 import { AppError } from "../middleware/error.middleware";
 import { sendSuccess } from "@utils/api-response";
+import {
+  serializeCategoryDetail,
+  serializeCategorySummary,
+} from "@utils/category-serializers";
 
 export class CategoryController {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const categories = await Category.findAll({
-        include: [{ model: Property }],
+        attributes: [
+          "id",
+          "name",
+          [fn("COUNT", col("properties.id")), "propertyCount"],
+        ],
+        include: [
+          {
+            model: Property,
+            attributes: [],
+          },
+        ],
+        group: ["Category.id", "Category.name"],
+        order: [["id", "ASC"]],
       });
       return sendSuccess(res, {
         message: "Categories fetched successfully",
-        data: categories,
+        data: categories.map((category) =>
+          serializeCategorySummary({
+            id: Number(category.get("id")),
+            name: String(category.get("name")),
+            propertyCount: category.get("propertyCount") as number | string,
+          }),
+        ),
       });
     } catch (error) {
       next(error);
@@ -25,17 +48,19 @@ export class CategoryController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
-      const category = await Category.findByPk(id, {
-        include: [{ model: Property }],
-      });
+      const category = await Category.findByPk(id);
 
       if (!category) {
         return next(new AppError("Category not found", 404));
       }
 
+      const propertyCount = await Property.count({
+        where: { categoryId: Number(id) },
+      });
+
       return sendSuccess(res, {
         message: "Category fetched successfully",
-        data: category,
+        data: serializeCategoryDetail(category, propertyCount),
       });
     } catch (error) {
       next(error);
@@ -60,7 +85,7 @@ export class CategoryController {
       return sendSuccess(res, {
         statusCode: 201,
         message: "Category created successfully",
-        data: category,
+        data: serializeCategoryDetail(category, 0),
       });
     } catch (error) {
       next(error);
@@ -78,9 +103,12 @@ export class CategoryController {
       }
 
       await category.update({ name });
+      const propertyCount = await Property.count({
+        where: { categoryId: Number(id) },
+      });
       return sendSuccess(res, {
         message: "Category updated successfully",
-        data: category,
+        data: serializeCategoryDetail(category, propertyCount),
       });
     } catch (error) {
       next(error);

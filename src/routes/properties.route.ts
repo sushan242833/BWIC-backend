@@ -8,6 +8,10 @@ import {
   propertyListQuerySchema,
   updatePropertySchema,
 } from "../validation/request-schemas";
+import {
+  PROPERTY_IMAGE_FIELD_NAME,
+  PROPERTY_IMAGE_UPLOAD_LIMIT,
+} from "@utils/property-images";
 
 const router = express.Router();
 
@@ -28,13 +32,13 @@ router.delete(
 );
 router.post(
   "/",
-  upload.array("images", 10),
+  upload.array(PROPERTY_IMAGE_FIELD_NAME, PROPERTY_IMAGE_UPLOAD_LIMIT),
   validateRequest({ body: createPropertySchema }),
   (req, res, next) => PropertyController.create(req, res, next),
 );
 router.put(
   "/:id",
-  upload.array("images", 10),
+  upload.array(PROPERTY_IMAGE_FIELD_NAME, PROPERTY_IMAGE_UPLOAD_LIMIT),
   validateRequest({ params: idParamSchema, body: updatePropertySchema }),
   (req, res, next) => PropertyController.update(req, res, next),
 );

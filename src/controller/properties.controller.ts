@@ -1,17 +1,42 @@
 import { NextFunction, Request, Response } from "express";
 import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
-import { Op, Order, WhereOptions } from "sequelize";
 import { geocodeLocation } from "@utils/geocoding";
 import {
   CreatePropertyDto,
   PropertyListQueryDto,
+  UpdatePropertyRequestDto,
   UpdatePropertyDto,
 } from "@dto/property.dto";
+import {
+  buildPropertyWhere,
+  normalizePropertyPagination,
+  resolvePropertyOrder,
+} from "@utils/property-filters";
+import {
+  resolveCreatePropertyImages,
+  resolveUpdatePropertyImages,
+} from "@utils/property-images";
+import {
+  serializePropertyDetail,
+  serializePropertySummary,
+} from "@utils/property-serializers";
 import { AppError } from "../middleware/error.middleware";
 import { sendSuccess } from "@utils/api-response";
 
 export class PropertyController {
+  private async findPropertyWithCategory(id: number | string) {
+    return Property.findByPk(id, {
+      attributes: { exclude: ["created_at", "updated_at"] },
+      include: [
+        {
+          model: Category,
+          attributes: ["id", "name"],
+        },
+      ],
+    });
+  }
+
   private async resolveCoordinates(
     location: string,
     fallback?: { latitude?: number | null; longitude?: number | null },
@@ -66,119 +91,18 @@ export class PropertyController {
     return parsed;
   }
 
-  private extractQueryString(value: unknown): string | undefined {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) {
-      const first = value[0];
-      return typeof first === "string" ? first : undefined;
-    }
-    return undefined;
-  }
-
-  private parseQueryNumber(value: unknown): number | undefined {
-    const raw = this.extractQueryString(value);
-    if (!raw) return undefined;
-    const parsed = Number.parseFloat(raw.replace(/,/g, "").trim());
-    return Number.isNaN(parsed) ? undefined : parsed;
-  }
-
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const {
-        location,
-        categoryId,
-        minPrice,
-        maxPrice,
-        minRoi,
-        minArea,
-        maxDistanceFromHighway,
-        status,
-        sort,
-        page,
-        limit,
-      } = req.query as PropertyListQueryDto;
-
-      const where: WhereOptions = {};
-
-      const locationValue = this.extractQueryString(location);
-      if (locationValue) {
-        where.location = { [Op.iLike]: `%${locationValue.trim()}%` };
-      }
-
-      const categoryIdValue = this.parseQueryNumber(categoryId);
-      if (categoryIdValue !== undefined) {
-        where.categoryId = categoryIdValue;
-      }
-
-      const minPriceValue = this.parseQueryNumber(minPrice);
-      if (minPriceValue !== undefined) {
-        where.priceNpr = {
-          ...(where.priceNpr as object),
-          [Op.gte]: minPriceValue,
-        };
-      }
-
-      const maxPriceValue = this.parseQueryNumber(maxPrice);
-      if (maxPriceValue !== undefined) {
-        where.priceNpr = {
-          ...(where.priceNpr as object),
-          [Op.lte]: maxPriceValue,
-        };
-      }
-
-      const minRoiValue = this.parseQueryNumber(minRoi);
-      if (minRoiValue !== undefined) {
-        where.roiPercent = {
-          ...(where.roiPercent as object),
-          [Op.gte]: minRoiValue,
-        };
-      }
-
-      const minAreaValue = this.parseQueryNumber(minArea);
-      if (minAreaValue !== undefined) {
-        where.areaSqft = {
-          ...(where.areaSqft as object),
-          [Op.gte]: minAreaValue,
-        };
-      }
-
-      const maxDistanceValue = this.parseQueryNumber(maxDistanceFromHighway);
-      if (maxDistanceValue !== undefined) {
-        where.distanceFromHighway = {
-          ...(where.distanceFromHighway as object),
-          [Op.lte]: maxDistanceValue,
-        };
-      }
-
-      const statusValue = this.extractQueryString(status);
-      if (statusValue) {
-        where.status = { [Op.iLike]: statusValue.trim() };
-      }
-
-      const sortValue = this.extractQueryString(sort);
-      const orderMap: Record<string, Order> = {
-        price_asc: [["priceNpr", "ASC"]],
-        price_desc: [["priceNpr", "DESC"]],
-        roi_desc: [["roiPercent", "DESC"]],
-        newest: [["createdAt", "DESC"]],
-      };
-      const order = orderMap[sortValue || "newest"] || orderMap.newest;
-
-      const pageValue = Math.max(
-        1,
-        Math.trunc(this.parseQueryNumber(page) || 1),
-      );
-      const limitValue = Math.min(
-        50,
-        Math.max(1, Math.trunc(this.parseQueryNumber(limit) || 9)),
-      );
-      const offsetValue = (pageValue - 1) * limitValue;
+      const filters = req.query as unknown as PropertyListQueryDto;
+      const where = buildPropertyWhere(filters);
+      const order = resolvePropertyOrder(filters.sort);
+      const pagination = normalizePropertyPagination(filters);
 
       const { rows, count } = await Property.findAndCountAll({
         where,
         order,
-        limit: limitValue,
-        offset: offsetValue,
+        limit: pagination.limit,
+        offset: pagination.offset,
         distinct: true,
         attributes: { exclude: ["created_at", "updated_at"] },
         include: [
@@ -189,18 +113,18 @@ export class PropertyController {
         ],
       });
 
-      const totalPages = Math.max(1, Math.ceil(count / limitValue));
+      const totalPages = Math.max(1, Math.ceil(count / pagination.limit));
 
       return sendSuccess(res, {
         message: "Properties fetched successfully",
-        data: rows,
+        data: rows.map((row) => serializePropertySummary(row)),
         pagination: {
-          page: pageValue,
-          limit: limitValue,
+          page: pagination.page,
+          limit: pagination.limit,
           total: count,
           totalPages,
-          hasNext: pageValue < totalPages,
-          hasPrev: pageValue > 1,
+          hasNext: pagination.page < totalPages,
+          hasPrev: pagination.page > 1,
         },
       });
     } catch (error) {
@@ -212,12 +136,7 @@ export class PropertyController {
     try {
       const request = req.body as CreatePropertyDto;
       const imageFiles = req.files as Express.Multer.File[];
-
-      if (!imageFiles || imageFiles.length === 0) {
-        return next(new AppError("At least one image is required", 400));
-      }
-
-      const imagePaths = imageFiles.map((file) => `/uploads/${file.filename}`);
+      const imagePaths = resolveCreatePropertyImages(imageFiles);
       const { priceNpr, roiPercent, areaSqft } =
         this.buildNumericFields(request);
       const distanceFromHighway = this.parseDistanceFromHighway(
@@ -245,11 +164,18 @@ export class PropertyController {
         images: imagePaths,
         description: request.description,
       });
+      const createdProperty = await this.findPropertyWithCategory(
+        Number(newProperty.id),
+      );
+
+      if (!createdProperty) {
+        throw new AppError("Property not found after creation", 500);
+      }
 
       return sendSuccess(res, {
         statusCode: 201,
         message: "Property created successfully",
-        data: newProperty,
+        data: serializePropertyDetail(createdProperty),
       });
     } catch (error) {
       next(error);
@@ -260,15 +186,7 @@ export class PropertyController {
     try {
       const id = req.params.id;
 
-      const property = await Property.findByPk(id, {
-        attributes: { exclude: ["created_at", "updated_at"] },
-        include: [
-          {
-            model: Category,
-            attributes: ["name"], // only include category name
-          },
-        ],
-      });
+      const property = await this.findPropertyWithCategory(id);
 
       if (!property) {
         return next(new AppError("Property not found", 404));
@@ -276,7 +194,7 @@ export class PropertyController {
 
       return sendSuccess(res, {
         message: "Property fetched successfully",
-        data: property,
+        data: serializePropertyDetail(property),
       });
     } catch (error) {
       next(error);
@@ -286,7 +204,7 @@ export class PropertyController {
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
-      const request = req.body as UpdatePropertyDto;
+      const request = req.body as UpdatePropertyRequestDto;
       const imageFiles = req.files as Express.Multer.File[];
 
       const property = await Property.findByPk(id);
@@ -294,8 +212,11 @@ export class PropertyController {
         return next(new AppError("Property not found", 404));
       }
 
-      const newImages = imageFiles?.map((file) => `/uploads/${file.filename}`);
-      const finalImages = newImages?.length ? newImages : property.images;
+      const finalImages = resolveUpdatePropertyImages({
+        uploadedFiles: imageFiles,
+        existingImagesInput: request.existingImages,
+        fallbackImages: property.images,
+      });
       const { priceNpr, roiPercent, areaSqft } =
         this.buildNumericFields(request);
       const distanceFromHighway = this.parseDistanceFromHighway(
@@ -333,10 +254,15 @@ export class PropertyController {
         images: finalImages,
         description: request.description,
       });
+      const updatedProperty = await this.findPropertyWithCategory(id);
+
+      if (!updatedProperty) {
+        throw new AppError("Property not found after update", 500);
+      }
 
       return sendSuccess(res, {
         message: "Property updated successfully",
-        data: property,
+        data: serializePropertyDetail(updatedProperty),
       });
     } catch (error) {
       next(error);

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  propertySortValues,
+  validatePropertyFilterCombinations,
+} from "@utils/property-filters";
 
 const firstString = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -18,6 +22,35 @@ const optionalTrimmedString = () =>
   z
     .preprocess(firstString, z.string().optional())
     .transform((value) => value?.trim() || undefined);
+
+const optionalStringArray = () =>
+  z.preprocess((value) => {
+    const candidate = firstString(value);
+
+    if (candidate === undefined || candidate === null || candidate === "") {
+      return undefined;
+    }
+
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        return undefined;
+      }
+
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [trimmed];
+      } catch {
+        return [trimmed];
+      }
+    }
+
+    return candidate;
+  }, z.array(z.string()).optional());
 
 const optionalNumber = (label: string, min = 0) =>
   z.preprocess(
@@ -51,8 +84,6 @@ const positiveIntParam = (label: string) =>
     .transform((value) => value.trim())
     .pipe(z.string().regex(/^\d+$/, `${label} must be a positive integer`));
 
-const sortValues = ["price_asc", "price_desc", "roi_desc", "newest"] as const;
-
 export const idParamSchema = z.object({
   id: positiveIntParam("id"),
 });
@@ -82,19 +113,31 @@ export const placeDetailsQuerySchema = z.object({
   placeId: trimmedString("placeId"),
 });
 
-export const propertyListQuerySchema = z.object({
-  location: optionalTrimmedString(),
-  categoryId: optionalNumber("categoryId"),
-  minPrice: optionalNumber("minPrice"),
-  maxPrice: optionalNumber("maxPrice"),
-  minRoi: optionalNumber("minRoi"),
-  minArea: optionalNumber("minArea"),
-  maxDistanceFromHighway: optionalNumber("maxDistanceFromHighway"),
-  status: optionalTrimmedString(),
-  sort: z.preprocess(firstString, z.enum(sortValues).optional()).optional(),
-  page: optionalNumber("page", 1),
-  limit: optionalNumber("limit", 1),
-});
+export const propertyListQuerySchema = z
+  .object({
+    location: optionalTrimmedString(),
+    categoryId: optionalNumber("categoryId", 1),
+    minPrice: optionalNumber("minPrice"),
+    maxPrice: optionalNumber("maxPrice"),
+    minRoi: optionalNumber("minRoi"),
+    minArea: optionalNumber("minArea"),
+    maxDistanceFromHighway: optionalNumber("maxDistanceFromHighway"),
+    status: optionalTrimmedString(),
+    sort: z
+      .preprocess(firstString, z.enum(propertySortValues).optional())
+      .optional(),
+    page: optionalNumber("page", 1),
+    limit: optionalNumber("limit", 1),
+  })
+  .superRefine((value, ctx) => {
+    validatePropertyFilterCombinations(value, (path, message) => {
+      ctx.addIssue({
+        code: "custom",
+        path: [path],
+        message,
+      });
+    });
+  });
 
 const propertyBodySchema = z.object({
   title: trimmedString("title"),
@@ -126,7 +169,9 @@ const propertyBodySchema = z.object({
 
 export const createPropertySchema = propertyBodySchema;
 
-export const updatePropertySchema = propertyBodySchema;
+export const updatePropertySchema = propertyBodySchema.extend({
+  existingImages: optionalStringArray(),
+});
 
 const recommendationMustHaveSchema = z
   .object({
@@ -140,17 +185,13 @@ const recommendationMustHaveSchema = z
     status: optionalTrimmedString(),
   })
   .superRefine((value, ctx) => {
-    if (
-      value.minPrice !== undefined &&
-      value.maxPrice !== undefined &&
-      value.minPrice > value.maxPrice
-    ) {
+    validatePropertyFilterCombinations(value, (path, message) => {
       ctx.addIssue({
         code: "custom",
-        path: ["minPrice"],
-        message: "minPrice cannot be greater than maxPrice",
+        path: [path],
+        message,
       });
-    }
+    });
   });
 
 const recommendationPreferencesSchema = z.object({
@@ -186,17 +227,13 @@ export const recommendationQuerySchema = z
     limit: optionalNumber("limit", 1),
   })
   .superRefine((value, ctx) => {
-    if (
-      value.minPrice !== undefined &&
-      value.maxPrice !== undefined &&
-      value.minPrice > value.maxPrice
-    ) {
+    validatePropertyFilterCombinations(value, (path, message) => {
       ctx.addIssue({
         code: "custom",
-        path: ["minPrice"],
-        message: "minPrice cannot be greater than maxPrice",
+        path: [path],
+        message,
       });
-    }
+    });
   });
 
 export const recommendationBodySchema = z.object({
