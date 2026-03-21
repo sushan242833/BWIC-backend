@@ -15,12 +15,9 @@ export interface PropertySummaryDto {
   } | null;
   location: string;
   price: string;
-  priceNpr?: number;
   roi: string;
-  roiPercent?: number;
   status: string;
   area: string;
-  areaSqft?: number;
   areaNepali?: string;
   distanceFromHighway?: number;
   images: string[];
@@ -55,12 +52,9 @@ export const serializePropertySummary = (
   category: serializeCategory(property.category),
   location: property.location,
   price: property.price,
-  priceNpr: property.priceNpr,
   roi: property.roi,
-  roiPercent: property.roiPercent,
   status: property.status,
   area: property.area,
-  areaSqft: property.areaSqft,
   areaNepali: property.areaNepali,
   distanceFromHighway: property.distanceFromHighway,
   images: property.images ?? [],

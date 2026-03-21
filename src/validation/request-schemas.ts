@@ -173,36 +173,15 @@ export const updatePropertySchema = propertyBodySchema.extend({
   existingImages: optionalStringArray(),
 });
 
-const recommendationMustHaveSchema = z
-  .object({
-    location: optionalTrimmedString(),
-    categoryId: optionalNumber("mustHave.categoryId"),
-    minPrice: optionalNumber("mustHave.minPrice"),
-    maxPrice: optionalNumber("mustHave.maxPrice"),
-    minRoi: optionalNumber("mustHave.minRoi"),
-    minArea: optionalNumber("mustHave.minArea"),
-    maxDistanceFromHighway: optionalNumber("mustHave.maxDistanceFromHighway"),
-    status: optionalTrimmedString(),
-  })
-  .superRefine((value, ctx) => {
-    validatePropertyFilterCombinations(value, (path, message) => {
-      ctx.addIssue({
-        code: "custom",
-        path: [path],
-        message,
-      });
-    });
-  });
-
 const recommendationPreferencesSchema = z
   .object({
     location: optionalTrimmedString(),
     latitude: optionalNumber("preferences.latitude"),
     longitude: optionalNumber("preferences.longitude"),
     locationRadiusKm: optionalNumber("preferences.locationRadiusKm"),
-    budget: optionalNumber("preferences.budget"),
-    roiPercent: optionalNumber("preferences.roiPercent"),
-    areaSqft: optionalNumber("preferences.areaSqft"),
+    price: optionalNumber("preferences.price"),
+    roi: optionalNumber("preferences.roi"),
+    area: optionalNumber("preferences.area"),
     maxDistanceFromHighway: optionalNumber(
       "preferences.maxDistanceFromHighway",
     ),
@@ -229,50 +208,40 @@ const recommendationPaginationSchema = z.object({
 export const recommendationQuerySchema = z
   .object({
     location: optionalTrimmedString(),
-    categoryId: optionalNumber("categoryId"),
-    minPrice: optionalNumber("minPrice"),
-    maxPrice: optionalNumber("maxPrice"),
-    minRoi: optionalNumber("minRoi"),
-    minArea: optionalNumber("minArea"),
+    latitude: optionalNumber("latitude"),
+    longitude: optionalNumber("longitude"),
+    locationRadiusKm: optionalNumber("locationRadiusKm"),
+    price: optionalNumber("price"),
+    roi: optionalNumber("roi"),
+    area: optionalNumber("area"),
     maxDistanceFromHighway: optionalNumber("maxDistanceFromHighway"),
-    status: optionalTrimmedString(),
     preferredLocation: optionalTrimmedString(),
     preferredLatitude: optionalNumber("preferredLatitude"),
     preferredLongitude: optionalNumber("preferredLongitude"),
-    locationRadiusKm: optionalNumber("locationRadiusKm"),
-    budget: optionalNumber("budget"),
     preferredRoi: optionalNumber("preferredRoi"),
     preferredArea: optionalNumber("preferredArea"),
     preferredMaxDistance: optionalNumber("preferredMaxDistance"),
   })
   .merge(recommendationPaginationSchema)
   .superRefine((value, ctx) => {
-    validatePropertyFilterCombinations(value, (path, message) => {
-      ctx.addIssue({
-        code: "custom",
-        path: [path],
-        message,
-      });
-    });
-
     if (
-      (value.preferredLatitude !== undefined &&
-        value.preferredLongitude === undefined) ||
-      (value.preferredLatitude === undefined &&
-        value.preferredLongitude !== undefined)
+      ((value.latitude !== undefined || value.longitude !== undefined) &&
+        (value.latitude === undefined || value.longitude === undefined)) ||
+      ((value.preferredLatitude !== undefined ||
+        value.preferredLongitude !== undefined) &&
+        (value.preferredLatitude === undefined ||
+          value.preferredLongitude === undefined))
     ) {
       ctx.addIssue({
         code: "custom",
-        path: ["preferredLatitude"],
-        message:
-          "preferredLatitude and preferredLongitude must be provided together",
+        path: ["latitude"],
+        message: "latitude and longitude must be provided together",
       });
     }
   });
 
 export const recommendationBodySchema = z
   .object({
-    mustHave: recommendationMustHaveSchema.optional(),
     preferences: recommendationPreferencesSchema.optional(),
   })
   .merge(recommendationPaginationSchema);

@@ -53,17 +53,9 @@ const migration: Migration = {
         type: dataTypes.STRING,
         allowNull: false,
       },
-      priceNpr: {
-        type: dataTypes.INTEGER,
-        allowNull: true,
-      },
       roi: {
         type: dataTypes.STRING,
         allowNull: false,
-      },
-      roiPercent: {
-        type: dataTypes.FLOAT,
-        allowNull: true,
       },
       status: {
         type: dataTypes.STRING,
@@ -72,10 +64,6 @@ const migration: Migration = {
       area: {
         type: dataTypes.STRING,
         allowNull: false,
-      },
-      areaSqft: {
-        type: dataTypes.FLOAT,
-        allowNull: true,
       },
       areaNepali: {
         type: dataTypes.STRING,

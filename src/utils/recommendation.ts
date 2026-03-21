@@ -1,11 +1,8 @@
 import {
   RecommendationExplanationDto,
-  RecommendationMustHaveDto,
   RecommendationPreferencesDto,
   RecommendationScoreBreakdownDto,
 } from "@dto/recommendation.dto";
-
-export interface RecommendationMustHave extends RecommendationMustHaveDto {}
 
 export interface RecommendationPreferences extends RecommendationPreferencesDto {}
 
@@ -17,9 +14,9 @@ export interface RecommendationProperty {
   status: string;
   latitude?: number | null;
   longitude?: number | null;
-  priceNpr?: number | null;
-  roiPercent?: number | null;
-  areaSqft?: number | null;
+  price?: string | null;
+  roi?: string | null;
+  area?: string | null;
   distanceFromHighway?: number | null;
 }
 
@@ -35,14 +32,27 @@ export interface RecommendationScore {
 }
 
 const WEIGHTS = {
-  location: 25,
-  price: 30,
-  roi: 15,
-  area: 15,
-  distance: 15,
+  location: 35,
+  price: 35,
+  roi: 5,
+  area: 20,
+  distance: 5,
 } as const;
 
+const DEFAULT_LOCATION_RADIUS_KM = 5;
+const STRONG_MATCH_THRESHOLD_PERCENT = 60;
+const CLOSE_PRICE_DELTA_RATIO = 0.1;
+const CLOSE_AREA_DELTA_RATIO = 0.15;
+
 const round2 = (value: number) => Math.round(value * 100) / 100;
+const parseMetric = (value: string | number | null | undefined) => {
+  if (value === null || value === undefined) return undefined;
+  const numeric =
+    typeof value === "number"
+      ? value
+      : Number.parseFloat(String(value).replace(/,/g, "").trim());
+  return Number.isNaN(numeric) ? undefined : numeric;
+};
 
 const roundScore = (value: number) => round2(Math.max(0, value));
 
@@ -130,72 +140,6 @@ const haversineKm = (
   return earthRadiusKm * c;
 };
 
-export const applyHardFilters = <T extends RecommendationProperty>(
-  properties: T[],
-  mustHave: RecommendationMustHave,
-): T[] => {
-  return properties.filter((property) => {
-    if (
-      mustHave.location &&
-      !property.location.toLowerCase().includes(mustHave.location.toLowerCase())
-    ) {
-      return false;
-    }
-
-    if (
-      mustHave.categoryId !== undefined &&
-      property.categoryId !== mustHave.categoryId
-    ) {
-      return false;
-    }
-
-    if (
-      mustHave.status &&
-      property.status.toLowerCase() !== mustHave.status.toLowerCase()
-    ) {
-      return false;
-    }
-
-    if (mustHave.minPrice !== undefined) {
-      if (property.priceNpr === null || property.priceNpr === undefined)
-        return false;
-      if (property.priceNpr < mustHave.minPrice) return false;
-    }
-
-    if (mustHave.maxPrice !== undefined) {
-      if (property.priceNpr === null || property.priceNpr === undefined)
-        return false;
-      if (property.priceNpr > mustHave.maxPrice) return false;
-    }
-
-    if (mustHave.minRoi !== undefined) {
-      if (property.roiPercent === null || property.roiPercent === undefined)
-        return false;
-      if (property.roiPercent < mustHave.minRoi) return false;
-    }
-
-    if (mustHave.minArea !== undefined) {
-      if (property.areaSqft === null || property.areaSqft === undefined)
-        return false;
-      if (property.areaSqft < mustHave.minArea) return false;
-    }
-
-    if (mustHave.maxDistanceFromHighway !== undefined) {
-      if (
-        property.distanceFromHighway === null ||
-        property.distanceFromHighway === undefined
-      ) {
-        return false;
-      }
-      if (property.distanceFromHighway > mustHave.maxDistanceFromHighway) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-};
-
 export const scoreProperty = (
   property: RecommendationProperty,
   preferences: RecommendationPreferences,
@@ -218,7 +162,7 @@ export const scoreProperty = (
       preferences.locationRadiusKm !== undefined &&
       preferences.locationRadiusKm > 0
         ? preferences.locationRadiusKm
-        : 10;
+        : DEFAULT_LOCATION_RADIUS_KM;
 
     if (
       property.latitude !== null &&
@@ -246,7 +190,7 @@ export const scoreProperty = (
           distanceKm <= radiusKm ? "positive" : "negative",
         ),
       );
-      if (percent >= 60) {
+      if (percent >= STRONG_MATCH_THRESHOLD_PERCENT) {
         pushUnique(topReasons, reason);
       } else {
         pushUnique(penalties, reason);
@@ -317,41 +261,44 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "location", points);
   }
 
-  if (preferences.budget !== undefined && preferences.budget > 0) {
+  if (preferences.price !== undefined && preferences.price > 0) {
     maxPossible += WEIGHTS.price;
-    const price = property.priceNpr;
+    const price = parseMetric(property.price);
     const points =
-      price === null || price === undefined
+      price === undefined
         ? 0
         : safeRatioScore(
             WEIGHTS.price,
-            Math.abs(price - preferences.budget) / preferences.budget,
+            Math.abs(price - preferences.price) / preferences.price,
           );
     score += points;
-    let reason = "Price data missing, so budget preference could not be scored";
+    let reason = "Price data missing, so price preference could not be scored";
     let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
 
-    if (price !== null && price !== undefined) {
-      const differenceRatio = Math.abs(price - preferences.budget) / preferences.budget;
-      if (differenceRatio <= 0.1) {
-        reason = "Close to your preferred budget";
+    if (price !== undefined) {
+      const differenceRatio =
+        Math.abs(price - preferences.price) / preferences.price;
+      if (differenceRatio <= CLOSE_PRICE_DELTA_RATIO) {
+        reason = "Close to your preferred price";
         sentiment = "positive";
-      } else if (price <= preferences.budget) {
-        reason = "Within your preferred budget, but not especially close";
+      } else if (price <= preferences.price) {
+        reason = "Within your preferred price, but not especially close";
         sentiment = points > 0 ? "positive" : "negative";
       } else {
-        reason = "Above your preferred budget";
+        reason = "Above your preferred price";
         sentiment = points > 0 ? "neutral" : "negative";
       }
     }
 
     explanation.push(createExplanation("price", reason, points, sentiment));
-    if (price === null || price === undefined) {
+    if (price === undefined) {
       pushUnique(
         penalties,
-        "Price data is missing, so budget fit could not be confirmed",
+        "Price data is missing, so price fit could not be confirmed",
       );
-    } else if (toPercentOfWeight(points, WEIGHTS.price) >= 60) {
+    } else if (
+      toPercentOfWeight(points, WEIGHTS.price) >= STRONG_MATCH_THRESHOLD_PERCENT
+    ) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);
@@ -359,37 +306,46 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "price", points);
   }
 
-  if (preferences.roiPercent !== undefined && preferences.roiPercent > 0) {
+  if (preferences.roi !== undefined && preferences.roi > 0) {
     maxPossible += WEIGHTS.roi;
-    const roi = property.roiPercent;
+    const roi = parseMetric(property.roi);
     let points = 0;
-    if (roi !== null && roi !== undefined) {
+    if (roi !== undefined) {
+      const roiDifference = preferences.roi - roi;
       points =
-        roi >= preferences.roiPercent
+        roi >= preferences.roi
           ? WEIGHTS.roi
-          : round2(WEIGHTS.roi * Math.max(0, roi / preferences.roiPercent));
+          : roiDifference === 1
+            ? 4
+            : roiDifference === 2
+              ? 3
+              : roiDifference === 3
+                ? 2
+                : roiDifference === 4
+                  ? 1
+                  : 0;
     }
     score += points;
     let reason = "ROI data missing, so ROI preference could not be scored";
     let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
 
-    if (roi !== null && roi !== undefined) {
-      if (roi >= preferences.roiPercent) {
+    if (roi !== undefined) {
+      if (roi >= preferences.roi) {
         reason = "Meets your ROI target";
         sentiment = "positive";
       } else {
         reason = "Below your ROI target";
-        sentiment = points > 0 ? "neutral" : "negative";
+        sentiment = "negative";
       }
     }
 
     explanation.push(createExplanation("roi", reason, points, sentiment));
-    if (roi === null || roi === undefined) {
+    if (roi === undefined) {
       pushUnique(
         penalties,
         "ROI data is missing, so return potential could not be confirmed",
       );
-    } else if (toPercentOfWeight(points, WEIGHTS.roi) >= 60) {
+    } else if (points >= WEIGHTS.roi) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);
@@ -397,28 +353,28 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "roi", points);
   }
 
-  if (preferences.areaSqft !== undefined && preferences.areaSqft > 0) {
+  if (preferences.area !== undefined && preferences.area > 0) {
     maxPossible += WEIGHTS.area;
-    const area = property.areaSqft;
+    const area = parseMetric(property.area);
     const points =
-      area === null || area === undefined
+      area === undefined
         ? 0
         : safeRatioScore(
             WEIGHTS.area,
-            Math.abs(area - preferences.areaSqft) / preferences.areaSqft,
+            Math.abs(area - preferences.area) / preferences.area,
           );
     score += points;
     let reason = "Area data missing, so area preference could not be scored";
     let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
 
-    if (area !== null && area !== undefined) {
+    if (area !== undefined) {
       if (
-        Math.abs(area - preferences.areaSqft) / preferences.areaSqft <=
-        0.15
+        Math.abs(area - preferences.area) / preferences.area <=
+        CLOSE_AREA_DELTA_RATIO
       ) {
         reason = "Close to your preferred property size";
         sentiment = "positive";
-      } else if (area >= preferences.areaSqft) {
+      } else if (area >= preferences.area) {
         reason = "Larger than your preferred property size";
         sentiment = points > 0 ? "neutral" : "negative";
       } else {
@@ -428,12 +384,14 @@ export const scoreProperty = (
     }
 
     explanation.push(createExplanation("area", reason, points, sentiment));
-    if (area === null || area === undefined) {
+    if (area === undefined) {
       pushUnique(
         penalties,
         "Area data is missing, so size fit could not be confirmed",
       );
-    } else if (toPercentOfWeight(points, WEIGHTS.area) >= 60) {
+    } else if (
+      toPercentOfWeight(points, WEIGHTS.area) >= STRONG_MATCH_THRESHOLD_PERCENT
+    ) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);
@@ -482,7 +440,9 @@ export const scoreProperty = (
         penalties,
         "Distance from highway data is missing, so accessibility fit could not be confirmed",
       );
-    } else if (toPercentOfWeight(points, WEIGHTS.distance) >= 60) {
+    } else if (
+      toPercentOfWeight(points, WEIGHTS.distance) >= STRONG_MATCH_THRESHOLD_PERCENT
+    ) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);

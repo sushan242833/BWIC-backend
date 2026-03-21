@@ -1,29 +1,17 @@
 import type { PropertySummaryDto } from "@utils/property-serializers";
 
-export interface RecommendationMustHaveDto {
-  location?: string;
-  categoryId?: number;
-  minPrice?: number;
-  maxPrice?: number;
-  minRoi?: number;
-  minArea?: number;
-  maxDistanceFromHighway?: number;
-  status?: string;
-}
-
 export interface RecommendationPreferencesDto {
   location?: string;
   latitude?: number;
   longitude?: number;
   locationRadiusKm?: number;
-  budget?: number;
-  roiPercent?: number;
-  areaSqft?: number;
+  price?: number;
+  roi?: number;
+  area?: number;
   maxDistanceFromHighway?: number;
 }
 
 export interface RecommendationRequestDto {
-  mustHave?: RecommendationMustHaveDto;
   preferences?: RecommendationPreferencesDto;
   page?: number;
   limit?: number;
@@ -36,10 +24,7 @@ export type RecommendationScoreKey =
   | "area"
   | "distance";
 
-export type RecommendationExplanationTone =
-  | "positive"
-  | "negative"
-  | "neutral";
+export type RecommendationExplanationTone = "positive" | "negative" | "neutral";
 
 export interface RecommendationExplanationDto {
   category: RecommendationScoreKey;

@@ -65,16 +65,14 @@ export class PropertyController {
     return parsed;
   }
 
-  private buildNumericFields(request: CreatePropertyDto | UpdatePropertyDto) {
-    const priceNpr = Math.round(this.parseNumericValue(request.price));
-    const roiPercent = this.parseNumericValue(request.roi);
-    const areaSqft = this.parseNumericValue(request.area);
+  private validateNumericFields(request: CreatePropertyDto | UpdatePropertyDto) {
+    const price = this.parseNumericValue(request.price);
+    const roi = this.parseNumericValue(request.roi);
+    const area = this.parseNumericValue(request.area);
 
-    if (priceNpr < 0 || roiPercent < 0 || areaSqft < 0) {
+    if (price < 0 || roi < 0 || area < 0) {
       throw new Error("Numeric fields must be non-negative");
     }
-
-    return { priceNpr, roiPercent, areaSqft };
   }
 
   private parseDistanceFromHighway(
@@ -137,8 +135,7 @@ export class PropertyController {
       const request = req.body as CreatePropertyDto;
       const imageFiles = req.files as Express.Multer.File[];
       const imagePaths = resolveCreatePropertyImages(imageFiles);
-      const { priceNpr, roiPercent, areaSqft } =
-        this.buildNumericFields(request);
+      this.validateNumericFields(request);
       const distanceFromHighway = this.parseDistanceFromHighway(
         request.distanceFromHighway,
       );
@@ -153,12 +150,9 @@ export class PropertyController {
         latitude,
         longitude,
         price: request.price,
-        priceNpr,
         roi: request.roi,
-        roiPercent,
         status: request.status,
         area: request.area,
-        areaSqft,
         areaNepali: request.areaNepali,
         distanceFromHighway,
         images: imagePaths,
@@ -217,8 +211,7 @@ export class PropertyController {
         existingImagesInput: request.existingImages,
         fallbackImages: property.images,
       });
-      const { priceNpr, roiPercent, areaSqft } =
-        this.buildNumericFields(request);
+      this.validateNumericFields(request);
       const distanceFromHighway = this.parseDistanceFromHighway(
         request.distanceFromHighway,
       );
@@ -243,12 +236,9 @@ export class PropertyController {
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
         price: request.price,
-        priceNpr,
         roi: request.roi,
-        roiPercent,
         status: request.status,
         area: request.area,
-        areaSqft,
         areaNepali: request.areaNepali,
         distanceFromHighway,
         images: finalImages,

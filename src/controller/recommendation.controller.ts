@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from "express";
-import { Op, WhereOptions } from "sequelize";
 import { Category } from "@models/category.model";
 import {
   RecommendationRequestDto,
@@ -7,17 +6,26 @@ import {
 } from "@dto/recommendation.dto";
 import { Property } from "@models/properties.model";
 import {
-  applyHardFilters,
-  RecommendationMustHave,
   RecommendationPreferences,
   scoreProperty,
 } from "@utils/recommendation";
 import { geocodeLocation } from "@utils/geocoding";
 import { sendSuccess } from "@utils/api-response";
 import { serializePropertySummary } from "@utils/property-serializers";
-import { AppError } from "../middleware/error.middleware";
 
 export class RecommendationController {
+  private readonly topRecommendationLimit = 20;
+  private readonly minimumRecommendationMatchPercentage = 30;
+  private readonly defaultRecommendationPageSize = 5;
+  private readonly maxRecommendationPageSize = 20;
+
+  private hasLocationPreference(preferences: RecommendationPreferences): boolean {
+    return (
+      Boolean(preferences.location) ||
+      (preferences.latitude !== undefined && preferences.longitude !== undefined)
+    );
+  }
+
   private extractQueryString(value: unknown): string | undefined {
     if (typeof value === "string") return value;
     if (Array.isArray(value)) {
@@ -40,49 +48,30 @@ export class RecommendationController {
 
   private buildFromQuery(req: Request): RecommendationRequestDto {
     return {
-      mustHave: {
-        location: this.extractQueryString(req.query.location),
-        categoryId: this.parseNumber(req.query.categoryId),
-        minPrice: this.parseNumber(req.query.minPrice),
-        maxPrice: this.parseNumber(req.query.maxPrice),
-        minRoi: this.parseNumber(req.query.minRoi),
-        minArea: this.parseNumber(req.query.minArea),
-        maxDistanceFromHighway: this.parseNumber(
-          req.query.maxDistanceFromHighway,
-        ),
-        status: this.extractQueryString(req.query.status),
-      },
       preferences: {
-        location: this.extractQueryString(req.query.preferredLocation),
-        latitude: this.parseNumber(req.query.preferredLatitude),
-        longitude: this.parseNumber(req.query.preferredLongitude),
+        location:
+          this.extractQueryString(req.query.location) ||
+          this.extractQueryString(req.query.preferredLocation),
+        latitude:
+          this.parseNumber(req.query.latitude) ??
+          this.parseNumber(req.query.preferredLatitude),
+        longitude:
+          this.parseNumber(req.query.longitude) ??
+          this.parseNumber(req.query.preferredLongitude),
         locationRadiusKm: this.parseNumber(req.query.locationRadiusKm),
-        budget: this.parseNumber(req.query.budget),
-        roiPercent: this.parseNumber(req.query.preferredRoi),
-        areaSqft: this.parseNumber(req.query.preferredArea),
-        maxDistanceFromHighway: this.parseNumber(
-          req.query.preferredMaxDistance,
-        ),
+        price: this.parseNumber(req.query.price),
+        roi:
+          this.parseNumber(req.query.roi) ??
+          this.parseNumber(req.query.preferredRoi),
+        area:
+          this.parseNumber(req.query.area) ??
+          this.parseNumber(req.query.preferredArea),
+        maxDistanceFromHighway:
+          this.parseNumber(req.query.maxDistanceFromHighway) ??
+          this.parseNumber(req.query.preferredMaxDistance),
       },
       page: this.parseNumber(req.query.page),
       limit: this.parseNumber(req.query.limit),
-    };
-  }
-
-  private sanitizeMustHave(
-    input?: RecommendationMustHave,
-  ): RecommendationMustHave {
-    if (!input) return {};
-
-    return {
-      location: input.location?.trim() || undefined,
-      categoryId: this.parseNumber(input.categoryId),
-      minPrice: this.parseNumber(input.minPrice),
-      maxPrice: this.parseNumber(input.maxPrice),
-      minRoi: this.parseNumber(input.minRoi),
-      minArea: this.parseNumber(input.minArea),
-      maxDistanceFromHighway: this.parseNumber(input.maxDistanceFromHighway),
-      status: input.status?.trim() || undefined,
     };
   }
 
@@ -96,9 +85,9 @@ export class RecommendationController {
       latitude: this.parseNumber(input.latitude),
       longitude: this.parseNumber(input.longitude),
       locationRadiusKm: this.parseNumber(input.locationRadiusKm),
-      budget: this.parseNumber(input.budget),
-      roiPercent: this.parseNumber(input.roiPercent),
-      areaSqft: this.parseNumber(input.areaSqft),
+      price: this.parseNumber(input.price),
+      roi: this.parseNumber(input.roi),
+      area: this.parseNumber(input.area),
       maxDistanceFromHighway: this.parseNumber(input.maxDistanceFromHighway),
     };
   }
@@ -110,7 +99,6 @@ export class RecommendationController {
           ? this.buildFromQuery(req)
           : (req.body as RecommendationRequestDto);
 
-      const mustHave = this.sanitizeMustHave(source.mustHave);
       const preferences = this.sanitizePreferences(source.preferences);
 
       if (
@@ -126,72 +114,12 @@ export class RecommendationController {
       }
 
       const page = Math.max(1, Math.trunc(source.page || 1));
-      const limit = Math.min(50, Math.max(1, Math.trunc(source.limit || 20)));
-
-      if (
-        mustHave.minPrice !== undefined &&
-        mustHave.maxPrice !== undefined &&
-        mustHave.minPrice > mustHave.maxPrice
-      ) {
-        return next(
-          new AppError(
-            "Invalid constraints: minPrice cannot be greater than maxPrice",
-            400,
-          ),
-        );
-      }
-
-      const where: WhereOptions = {};
-
-      if (mustHave.location) {
-        where.location = { [Op.iLike]: `%${mustHave.location}%` };
-      }
-
-      if (mustHave.categoryId !== undefined) {
-        where.categoryId = mustHave.categoryId;
-      }
-
-      if (mustHave.status) {
-        where.status = { [Op.iLike]: mustHave.status };
-      }
-
-      if (mustHave.minPrice !== undefined) {
-        where.priceNpr = {
-          ...(where.priceNpr as object),
-          [Op.gte]: mustHave.minPrice,
-        };
-      }
-
-      if (mustHave.maxPrice !== undefined) {
-        where.priceNpr = {
-          ...(where.priceNpr as object),
-          [Op.lte]: mustHave.maxPrice,
-        };
-      }
-
-      if (mustHave.minRoi !== undefined) {
-        where.roiPercent = {
-          ...(where.roiPercent as object),
-          [Op.gte]: mustHave.minRoi,
-        };
-      }
-
-      if (mustHave.minArea !== undefined) {
-        where.areaSqft = {
-          ...(where.areaSqft as object),
-          [Op.gte]: mustHave.minArea,
-        };
-      }
-
-      if (mustHave.maxDistanceFromHighway !== undefined) {
-        where.distanceFromHighway = {
-          ...(where.distanceFromHighway as object),
-          [Op.lte]: mustHave.maxDistanceFromHighway,
-        };
-      }
+      const limit = Math.min(
+        this.maxRecommendationPageSize,
+        Math.max(1, Math.trunc(source.limit || this.defaultRecommendationPageSize)),
+      );
 
       const candidates = await Property.findAll({
-        where,
         attributes: { exclude: ["created_at", "updated_at"] },
         include: [
           {
@@ -201,9 +129,7 @@ export class RecommendationController {
         ],
       });
 
-      const hardFiltered = applyHardFilters(candidates, mustHave);
-
-      const ranked = hardFiltered
+      const ranked = candidates
         .map<RecommendationResultDto>((property) => {
           const scored = scoreProperty(property, preferences);
 
@@ -218,17 +144,28 @@ export class RecommendationController {
             scoreBreakdown: scored.scoreBreakdown,
           };
         })
+        .filter(
+          (item) =>
+            !this.hasLocationPreference(preferences) ||
+            (item.scoreBreakdown?.location ?? 0) > 0,
+        )
+        .filter(
+          (item) =>
+            item.matchPercentage >= this.minimumRecommendationMatchPercentage,
+        )
         .sort(
           (a, b) => b.score - a.score || b.matchPercentage - a.matchPercentage,
         );
 
-      const total = ranked.length;
+      const shortlisted = ranked.slice(0, this.topRecommendationLimit);
+
+      const total = shortlisted.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const offset = (page - 1) * limit;
-      const data = ranked.slice(offset, offset + limit);
+      const data = shortlisted.slice(offset, offset + limit);
 
       return sendSuccess(res, {
-        message: "Recommendations fetched successfully",
+        message: "Top recommendations fetched successfully",
         data,
         pagination: {
           page,

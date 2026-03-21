@@ -1,4 +1,4 @@
-import { Op, Order, WhereOptions } from "sequelize";
+import { cast, col, Op, Order, WhereOptions, where } from "sequelize";
 
 export const propertySortValues = [
   "price_asc",
@@ -39,62 +39,74 @@ export const validatePropertyFilterCombinations = (
 export const buildPropertyWhere = (
   filters: PropertyFilterQuery,
 ): WhereOptions => {
-  const where: WhereOptions = {};
+  const whereClause: WhereOptions = {};
+  const andConditions = [];
 
   if (filters.location) {
-    where.location = { [Op.iLike]: `%${filters.location}%` };
+    whereClause.location = { [Op.iLike]: `%${filters.location}%` };
   }
 
   if (filters.categoryId !== undefined) {
-    where.categoryId = filters.categoryId;
+    whereClause.categoryId = filters.categoryId;
   }
 
   if (filters.minPrice !== undefined) {
-    where.priceNpr = {
-      ...(where.priceNpr as object),
-      [Op.gte]: filters.minPrice,
-    };
+    andConditions.push(
+      where(cast(col("price"), "DOUBLE PRECISION"), {
+        [Op.gte]: filters.minPrice,
+      }),
+    );
   }
 
   if (filters.maxPrice !== undefined) {
-    where.priceNpr = {
-      ...(where.priceNpr as object),
-      [Op.lte]: filters.maxPrice,
-    };
+    andConditions.push(
+      where(cast(col("price"), "DOUBLE PRECISION"), {
+        [Op.lte]: filters.maxPrice,
+      }),
+    );
   }
 
   if (filters.minRoi !== undefined) {
-    where.roiPercent = {
-      ...(where.roiPercent as object),
-      [Op.gte]: filters.minRoi,
-    };
+    andConditions.push(
+      where(cast(col("roi"), "DOUBLE PRECISION"), {
+        [Op.gte]: filters.minRoi,
+      }),
+    );
   }
 
   if (filters.minArea !== undefined) {
-    where.areaSqft = {
-      ...(where.areaSqft as object),
-      [Op.gte]: filters.minArea,
-    };
+    andConditions.push(
+      where(cast(col("area"), "DOUBLE PRECISION"), {
+        [Op.gte]: filters.minArea,
+      }),
+    );
   }
 
   if (filters.maxDistanceFromHighway !== undefined) {
-    where.distanceFromHighway = {
-      ...(where.distanceFromHighway as object),
+    whereClause.distanceFromHighway = {
+      ...(whereClause.distanceFromHighway as object),
       [Op.lte]: filters.maxDistanceFromHighway,
     };
   }
 
   if (filters.status) {
-    where.status = { [Op.iLike]: filters.status };
+    whereClause.status = { [Op.iLike]: filters.status };
   }
 
-  return where;
+  if (andConditions.length > 0) {
+    return {
+      ...whereClause,
+      [Op.and]: andConditions,
+    };
+  }
+
+  return whereClause;
 };
 
 const propertyOrderMap: Record<PropertySortValue, Order> = {
-  price_asc: [["priceNpr", "ASC"]],
-  price_desc: [["priceNpr", "DESC"]],
-  roi_desc: [["roiPercent", "DESC"]],
+  price_asc: [[cast(col("price"), "DOUBLE PRECISION"), "ASC"]],
+  price_desc: [[cast(col("price"), "DOUBLE PRECISION"), "DESC"]],
+  roi_desc: [[cast(col("roi"), "DOUBLE PRECISION"), "DESC"]],
   newest: [["createdAt", "DESC"]],
 };
 
