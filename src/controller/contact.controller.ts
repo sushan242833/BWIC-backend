@@ -1,9 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import { ContactMessage } from "../models/contact.model";
-import nodemailer from "nodemailer";
+import env from "@config/env";
 import { CreateContactMessageDto } from "@dto/contact.dto";
 import { AppError } from "../middleware/error.middleware";
 import { sendSuccess } from "@utils/api-response";
+import { sendEmail } from "@utils/email";
 
 export class ContactController {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -51,36 +52,37 @@ export class ContactController {
 
       await contactMessage.save();
 
-      // Create nodemailer transporter using SMTP config from .env
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
-        secure: Number(process.env.SMTP_PORT) === 465, // true for 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
+      if (!env.mail.notifyEmail) {
+        return next(new AppError("Notification email is not configured", 500));
+      }
 
-      // Prepare email content
-      const mailOptions = {
-        from: `"BWIC" <${process.env.FROM_EMAIL}>`,
-        to: process.env.NOTIFY_EMAIL,
+      const text = `
+You have a new contact message:
+
+Name: ${contactMessage.name}
+Email: ${contactMessage.email}
+Phone: ${contactMessage.phone ?? "N/A"}
+Investment Range: ${contactMessage.investmentRange}
+Property Type: ${contactMessage.propertyType}
+Message: ${contactMessage.message ?? "N/A"}
+      `.trim();
+
+      await sendEmail({
+        to: env.mail.notifyEmail,
         subject: `New Contact Message from ${contactMessage.name}`,
-        text: `
-      You have a new contact message:
-
-      Name: ${contactMessage.name}
-      Email: ${contactMessage.email}
-      Phone: ${contactMessage.phone ?? "N/A"}
-      Investment Range: ${contactMessage.investmentRange}
-      Property Type: ${contactMessage.propertyType}
-      Message: ${contactMessage.message ?? "N/A"}
-              `,
-      };
-
-      // Send notification email
-      await transporter.sendMail(mailOptions);
+        text,
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #131b2e; line-height: 1.6;">
+            <h2 style="margin-bottom: 16px;">New contact message received</h2>
+            <p><strong>Name:</strong> ${contactMessage.name}</p>
+            <p><strong>Email:</strong> ${contactMessage.email}</p>
+            <p><strong>Phone:</strong> ${contactMessage.phone ?? "N/A"}</p>
+            <p><strong>Investment Range:</strong> ${contactMessage.investmentRange}</p>
+            <p><strong>Property Type:</strong> ${contactMessage.propertyType}</p>
+            <p><strong>Message:</strong><br/>${contactMessage.message ?? "N/A"}</p>
+          </div>
+        `,
+      });
 
       return sendSuccess(res, {
         statusCode: 201,

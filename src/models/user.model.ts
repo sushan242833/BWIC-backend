@@ -5,6 +5,7 @@ import {
   CreatedAt,
   DataType,
   Default,
+  HasMany,
   IsEmail,
   Model,
   PrimaryKey,
@@ -13,6 +14,7 @@ import {
   UpdatedAt,
 } from "sequelize-typescript";
 import { Optional } from "sequelize";
+import { PasswordResetToken } from "@models/password-reset-token.model";
 
 export const USER_ROLES = ["ADMIN", "USER"] as const;
 
@@ -67,6 +69,9 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
   @Default(true)
   @Column(DataType.BOOLEAN)
   isActive!: boolean;
+
+  @HasMany(() => PasswordResetToken)
+  passwordResetTokens!: PasswordResetToken[];
 
   @CreatedAt
   createdAt!: Date;

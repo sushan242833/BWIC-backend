@@ -23,7 +23,11 @@ const toSameSite = (
   fallback: "lax" | "strict" | "none",
 ): "lax" | "strict" | "none" => {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "lax" || normalized === "strict" || normalized === "none") {
+  if (
+    normalized === "lax" ||
+    normalized === "strict" ||
+    normalized === "none"
+  ) {
     return normalized;
   }
 
@@ -33,8 +37,14 @@ const toSameSite = (
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: toNumber(process.env.PORT, 4000),
-  frontendOrigin: process.env.FRONTEND_ORIGIN || "*",
+  frontendOrigin:
+    process.env.FRONTEND_ORIGIN || process.env.FRONTEND_URL || "*",
+  frontendUrl:
+    process.env.FRONTEND_URL ||
+    process.env.FRONTEND_ORIGIN ||
+    "http://localhost:3000",
   appBaseUrl:
+    process.env.BACKEND_URL ||
     process.env.APP_BASE_URL ||
     `http://localhost:${toNumber(process.env.PORT, 4000)}`,
   db: {
@@ -49,6 +59,18 @@ export const env = {
   uploads: {
     dir: process.env.UPLOAD_DIR || "src/public/uploads",
     maxFileSizeBytes: toNumber(process.env.MAX_FILE_SIZE_MB, 5) * 1024 * 1024,
+  },
+  mail: {
+    host: process.env.SMTP_HOST || "",
+    port: toNumber(process.env.SMTP_PORT, 587),
+    secure:
+      process.env.SMTP_SECURE === undefined
+        ? toNumber(process.env.SMTP_PORT, 587) === 465
+        : toBoolean(process.env.SMTP_SECURE, false),
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || "",
+    from: process.env.MAIL_FROM || process.env.FROM_EMAIL || "",
+    notifyEmail: process.env.NOTIFY_EMAIL || "",
   },
   auth: {
     jwtSecret: process.env.JWT_SECRET || "",
@@ -73,6 +95,21 @@ export const env = {
       60 *
       1000,
     bcryptSaltRounds: toPositiveInt(process.env.BCRYPT_SALT_ROUNDS, 12),
+    passwordReset: {
+      expiryMinutes: toPositiveInt(process.env.RESET_TOKEN_EXPIRY_MINUTES, 20),
+      resendCooldownSeconds: toPositiveInt(
+        process.env.PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
+        60,
+      ),
+      maxAttemptsPerWindow: toPositiveInt(
+        process.env.FORGOT_PASSWORD_MAX_ATTEMPTS,
+        5,
+      ),
+      attemptsWindowMinutes: toPositiveInt(
+        process.env.FORGOT_PASSWORD_WINDOW_MINUTES,
+        15,
+      ),
+    },
     initialAdmin: {
       fullName: process.env.INITIAL_ADMIN_FULL_NAME || "",
       email: process.env.INITIAL_ADMIN_EMAIL || "",

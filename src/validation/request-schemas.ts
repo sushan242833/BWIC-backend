@@ -3,6 +3,12 @@ import {
   propertySortValues,
   validatePropertyFilterCombinations,
 } from "@utils/property-filters";
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  STRONG_PASSWORD_MESSAGE,
+  isStrongPassword,
+} from "@utils/password-policy";
 import { USER_ROLES } from "@models/user.model";
 
 const firstString = (value: unknown): unknown => {
@@ -144,6 +150,21 @@ const passwordString = () =>
       .max(72, "password must be 72 characters or fewer"),
   );
 
+const strongPasswordString = (label: string) =>
+  trimmedString(label).pipe(
+    z
+      .string()
+      .min(
+        PASSWORD_MIN_LENGTH,
+        `${label} must be at least ${PASSWORD_MIN_LENGTH} characters long`,
+      )
+      .max(
+        PASSWORD_MAX_LENGTH,
+        `${label} must be ${PASSWORD_MAX_LENGTH} characters or fewer`,
+      )
+      .refine(isStrongPassword, STRONG_PASSWORD_MESSAGE),
+  );
+
 export const registerSchema = z.object({
   fullName: trimmedString("fullName").pipe(
     z.string().min(2, "fullName must be at least 2 characters long"),
@@ -159,6 +180,30 @@ export const loginSchema = z.object({
   rememberMe: optionalBoolean(),
   scope: z.preprocess(firstString, z.enum(USER_ROLES).optional()),
 });
+
+export const forgotPasswordSchema = z.object({
+  email: emailString("email"),
+});
+
+export const validateResetTokenQuerySchema = z.object({
+  token: trimmedString("token"),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    token: trimmedString("token"),
+    newPassword: strongPasswordString("newPassword"),
+    confirmPassword: strongPasswordString("confirmPassword"),
+  })
+  .superRefine((value, ctx) => {
+    if (value.newPassword !== value.confirmPassword) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["confirmPassword"],
+        message: "Passwords do not match",
+      });
+    }
+  });
 
 export const autocompleteQuerySchema = z.object({
   q: optionalTrimmedString(),
