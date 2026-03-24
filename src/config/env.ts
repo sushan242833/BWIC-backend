@@ -13,6 +13,23 @@ const toBoolean = (value: string | undefined, fallback: boolean): boolean => {
   return fallback;
 };
 
+const toPositiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const toSameSite = (
+  value: string | undefined,
+  fallback: "lax" | "strict" | "none",
+): "lax" | "strict" | "none" => {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "lax" || normalized === "strict" || normalized === "none") {
+    return normalized;
+  }
+
+  return fallback;
+};
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: toNumber(process.env.PORT, 4000),
@@ -33,6 +50,39 @@ export const env = {
     dir: process.env.UPLOAD_DIR || "src/public/uploads",
     maxFileSizeBytes: toNumber(process.env.MAX_FILE_SIZE_MB, 5) * 1024 * 1024,
   },
+  auth: {
+    jwtSecret: process.env.JWT_SECRET || "",
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    cookieName: process.env.AUTH_COOKIE_NAME || "bwic_auth",
+    cookieSameSite: toSameSite(process.env.AUTH_COOKIE_SAME_SITE, "lax"),
+    cookieSecure:
+      process.env.AUTH_COOKIE_SECURE === undefined
+        ? process.env.NODE_ENV === "production"
+        : toBoolean(process.env.AUTH_COOKIE_SECURE, false),
+    cookieDomain: process.env.AUTH_COOKIE_DOMAIN || "",
+    cookieMaxAgeMs:
+      toPositiveInt(process.env.AUTH_COOKIE_MAX_AGE_DAYS, 7) *
+      24 *
+      60 *
+      60 *
+      1000,
+    rememberCookieMaxAgeMs:
+      toPositiveInt(process.env.AUTH_COOKIE_REMEMBER_ME_DAYS, 30) *
+      24 *
+      60 *
+      60 *
+      1000,
+    bcryptSaltRounds: toPositiveInt(process.env.BCRYPT_SALT_ROUNDS, 12),
+    initialAdmin: {
+      fullName: process.env.INITIAL_ADMIN_FULL_NAME || "",
+      email: process.env.INITIAL_ADMIN_EMAIL || "",
+      password: process.env.INITIAL_ADMIN_PASSWORD || "",
+    },
+  },
 };
+
+if (!env.auth.jwtSecret.trim()) {
+  throw new Error("JWT_SECRET is required");
+}
 
 export default env;

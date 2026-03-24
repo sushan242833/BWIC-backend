@@ -8,12 +8,16 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon --watch src --ext ts --ignore dist --exec \"ts-node --require tsconfig-paths/register src/index.ts\"",
-    "db:migrate": "ts-node --require tsconfig-paths/register src/database/migrate.ts"
+    "db:migrate": "ts-node --require tsconfig-paths/register src/database/migrate.ts",
+    "auth:seed-admin": "ts-node --require tsconfig-paths/register src/database/seed-admin.ts"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
@@ -23,8 +27,11 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/nodemailer": "^6.4.17",
     "@types/sequelize": "^4.28.20",

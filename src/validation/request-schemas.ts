@@ -3,6 +3,7 @@ import {
   propertySortValues,
   validatePropertyFilterCombinations,
 } from "@utils/property-filters";
+import { USER_ROLES } from "@models/user.model";
 
 const firstString = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -22,6 +23,31 @@ const optionalTrimmedString = () =>
   z
     .preprocess(firstString, z.string().optional())
     .transform((value) => value?.trim() || undefined);
+
+const optionalBoolean = () =>
+  z.preprocess((value) => {
+    const candidate = firstString(value);
+
+    if (candidate === undefined || candidate === null || candidate === "") {
+      return undefined;
+    }
+
+    if (typeof candidate === "boolean") {
+      return candidate;
+    }
+
+    if (typeof candidate === "string") {
+      const normalized = candidate.trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(normalized)) {
+        return true;
+      }
+      if (["false", "0", "no", "off"].includes(normalized)) {
+        return false;
+      }
+    }
+
+    return candidate;
+  }, z.boolean().optional());
 
 const optionalStringArray = () =>
   z.preprocess((value) => {
@@ -103,6 +129,35 @@ export const createContactSchema = z.object({
   investmentRange: trimmedString("investmentRange"),
   propertyType: trimmedString("propertyType"),
   message: optionalTrimmedString(),
+});
+
+const emailString = (label: string) =>
+  trimmedString(label)
+    .pipe(z.string().email(`${label} must be a valid email address`))
+    .transform((value) => value.toLowerCase());
+
+const passwordString = () =>
+  trimmedString("password").pipe(
+    z
+      .string()
+      .min(8, "password must be at least 8 characters long")
+      .max(72, "password must be 72 characters or fewer"),
+  );
+
+export const registerSchema = z.object({
+  fullName: trimmedString("fullName").pipe(
+    z.string().min(2, "fullName must be at least 2 characters long"),
+  ),
+  email: emailString("email"),
+  password: passwordString(),
+  rememberMe: optionalBoolean(),
+});
+
+export const loginSchema = z.object({
+  email: emailString("email"),
+  password: passwordString(),
+  rememberMe: optionalBoolean(),
+  scope: z.preprocess(firstString, z.enum(USER_ROLES).optional()),
 });
 
 export const autocompleteQuerySchema = z.object({
