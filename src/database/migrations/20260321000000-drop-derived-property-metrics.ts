@@ -2,24 +2,44 @@ import { Migration } from "./types";
 
 const migration: Migration = {
   async up({ queryInterface }) {
-    await queryInterface.removeColumn("properties", "priceNpr");
-    await queryInterface.removeColumn("properties", "roiPercent");
-    await queryInterface.removeColumn("properties", "areaSqft");
+    const propertiesTable = await queryInterface.describeTable("properties");
+
+    if (propertiesTable.priceNpr) {
+      await queryInterface.removeColumn("properties", "priceNpr");
+    }
+
+    if (propertiesTable.roiPercent) {
+      await queryInterface.removeColumn("properties", "roiPercent");
+    }
+
+    if (propertiesTable.areaSqft) {
+      await queryInterface.removeColumn("properties", "areaSqft");
+    }
   },
 
   async down({ queryInterface, dataTypes }) {
-    await queryInterface.addColumn("properties", "priceNpr", {
-      type: dataTypes.INTEGER,
-      allowNull: true,
-    });
-    await queryInterface.addColumn("properties", "roiPercent", {
-      type: dataTypes.FLOAT,
-      allowNull: true,
-    });
-    await queryInterface.addColumn("properties", "areaSqft", {
-      type: dataTypes.FLOAT,
-      allowNull: true,
-    });
+    const propertiesTable = await queryInterface.describeTable("properties");
+
+    if (!propertiesTable.priceNpr) {
+      await queryInterface.addColumn("properties", "priceNpr", {
+        type: dataTypes.INTEGER,
+        allowNull: true,
+      });
+    }
+
+    if (!propertiesTable.roiPercent) {
+      await queryInterface.addColumn("properties", "roiPercent", {
+        type: dataTypes.FLOAT,
+        allowNull: true,
+      });
+    }
+
+    if (!propertiesTable.areaSqft) {
+      await queryInterface.addColumn("properties", "areaSqft", {
+        type: dataTypes.FLOAT,
+        allowNull: true,
+      });
+    }
   },
 };
 

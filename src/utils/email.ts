@@ -11,15 +11,9 @@ interface SendEmailOptions {
 let transporter: nodemailer.Transporter | null = null;
 
 const assertEmailConfig = () => {
-  if (
-    !env.mail.host ||
-    !env.mail.port ||
-    !env.mail.user ||
-    !env.mail.pass ||
-    !env.mail.from
-  ) {
+  if (!env.mail.isConfigured) {
     throw new Error(
-      "SMTP email configuration is incomplete. Please check your mail environment variables.",
+      "SMTP email configuration is incomplete. Check SMTP_HOST, SMTP_USER, SMTP_PASS, and MAIL_FROM.",
     );
   }
 };

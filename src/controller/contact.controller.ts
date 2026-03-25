@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { ContactMessage } from "../models/contact.model";
 import env from "@config/env";
+import { CONTACT_NOTIFICATION_EMPTY_VALUE } from "@constants/contact";
 import { CreateContactMessageDto } from "@dto/contact.dto";
 import { AppError } from "../middleware/error.middleware";
 import { sendSuccess } from "@utils/api-response";
@@ -61,10 +62,10 @@ You have a new contact message:
 
 Name: ${contactMessage.name}
 Email: ${contactMessage.email}
-Phone: ${contactMessage.phone ?? "N/A"}
+Phone: ${contactMessage.phone ?? CONTACT_NOTIFICATION_EMPTY_VALUE}
 Investment Range: ${contactMessage.investmentRange}
 Property Type: ${contactMessage.propertyType}
-Message: ${contactMessage.message ?? "N/A"}
+Message: ${contactMessage.message ?? CONTACT_NOTIFICATION_EMPTY_VALUE}
       `.trim();
 
       await sendEmail({
@@ -76,10 +77,10 @@ Message: ${contactMessage.message ?? "N/A"}
             <h2 style="margin-bottom: 16px;">New contact message received</h2>
             <p><strong>Name:</strong> ${contactMessage.name}</p>
             <p><strong>Email:</strong> ${contactMessage.email}</p>
-            <p><strong>Phone:</strong> ${contactMessage.phone ?? "N/A"}</p>
+            <p><strong>Phone:</strong> ${contactMessage.phone ?? CONTACT_NOTIFICATION_EMPTY_VALUE}</p>
             <p><strong>Investment Range:</strong> ${contactMessage.investmentRange}</p>
             <p><strong>Property Type:</strong> ${contactMessage.propertyType}</p>
-            <p><strong>Message:</strong><br/>${contactMessage.message ?? "N/A"}</p>
+            <p><strong>Message:</strong><br/>${contactMessage.message ?? CONTACT_NOTIFICATION_EMPTY_VALUE}</p>
           </div>
         `,
       });

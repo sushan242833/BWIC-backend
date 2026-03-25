@@ -1,4 +1,5 @@
 import type { PropertyFilterQuery } from "@utils/property-filters";
+import type { PropertyStatus } from "@constants/property";
 
 export interface CreatePropertyDto {
   title: string;
@@ -6,7 +7,7 @@ export interface CreatePropertyDto {
   location: string;
   price: string;
   roi: string;
-  status: string;
+  status: PropertyStatus;
   area: string;
   areaNepali?: string;
   distanceFromHighway?: number | string;

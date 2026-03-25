@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { recommendationConfig } from "@config/recommendation";
 import { Category } from "@models/category.model";
 import {
   RecommendationRequestDto,
@@ -14,10 +15,14 @@ import { sendSuccess } from "@utils/api-response";
 import { serializePropertySummary } from "@utils/property-serializers";
 
 export class RecommendationController {
-  private readonly topRecommendationLimit = 20;
-  private readonly minimumRecommendationMatchPercentage = 30;
-  private readonly defaultRecommendationPageSize = 5;
-  private readonly maxRecommendationPageSize = 20;
+  private readonly topRecommendationLimit =
+    recommendationConfig.topRecommendationLimit;
+  private readonly minimumRecommendationMatchPercentage =
+    recommendationConfig.minimumMatchPercentage;
+  private readonly defaultRecommendationPageSize =
+    recommendationConfig.defaultPageSize;
+  private readonly maxRecommendationPageSize =
+    recommendationConfig.maxPageSize;
 
   private hasLocationPreference(preferences: RecommendationPreferences): boolean {
     return (

@@ -1,8 +1,8 @@
 import bcrypt from "bcrypt";
-import env from "@config/env";
+import authConfig from "@config/auth";
 
 export const hashPassword = (password: string): Promise<string> =>
-  bcrypt.hash(password, env.auth.bcryptSaltRounds);
+  bcrypt.hash(password, authConfig.bcryptSaltRounds);
 
 export const comparePassword = (
   password: string,

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import authConfig from "@config/auth";
 import env from "@config/env";
 
 const RESET_TOKEN_BYTES = 32;
@@ -19,7 +20,7 @@ export const generatePasswordResetToken = () => {
     rawToken,
     tokenHash: hashResetToken(rawToken),
     expiresAt: new Date(
-      Date.now() + env.auth.passwordReset.expiryMinutes * 60 * 1000,
+      Date.now() + authConfig.passwordReset.expiryMinutes * 60 * 1000,
     ),
   };
 };

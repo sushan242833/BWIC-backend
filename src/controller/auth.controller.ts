@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { Op } from "sequelize";
+import authConfig from "@config/auth";
 import sequelize from "@config/config";
 import env from "@config/env";
 import {
@@ -10,7 +11,7 @@ import {
   ValidateResetTokenQueryDto,
 } from "@dto/auth.dto";
 import { PasswordResetToken } from "@models/password-reset-token.model";
-import { User } from "@models/user.model";
+import { USER_ROLE, User } from "@models/user.model";
 import { serializeAuthUser } from "@utils/auth-user";
 import { buildPasswordResetEmailTemplate } from "@utils/email-templates/password-reset-email";
 import { sendEmail } from "@utils/email";
@@ -59,7 +60,7 @@ export class AuthController {
         fullName: request.fullName.trim(),
         email: normalizedEmail,
         passwordHash: await hashPassword(request.password),
-        role: "USER",
+        role: USER_ROLE.USER,
         isActive: true,
       });
 
@@ -101,7 +102,10 @@ export class AuthController {
         return next(new AppError("Invalid email or password", 401));
       }
 
-      if (request.scope === "ADMIN" && user.role !== "ADMIN") {
+      if (
+        request.scope === USER_ROLE.ADMIN &&
+        user.role !== USER_ROLE.ADMIN
+      ) {
         return next(
           new AppError("This account is not allowed to access the admin portal", 403),
         );
@@ -149,9 +153,8 @@ export class AuthController {
 
       assertRateLimit({
         key: `forgot-password:${requesterIp}`,
-        maxRequests: env.auth.passwordReset.maxAttemptsPerWindow,
-        windowMs:
-          env.auth.passwordReset.attemptsWindowMinutes * 60 * 1000,
+        maxRequests: authConfig.passwordReset.maxAttemptsPerWindow,
+        windowMs: authConfig.passwordReset.attemptsWindowMinutes * 60 * 1000,
         message: "Too many password reset requests. Please wait and try again.",
       });
 
@@ -168,8 +171,7 @@ export class AuthController {
 
       const now = new Date();
       const cooldownStart = new Date(
-        now.getTime() -
-          env.auth.passwordReset.resendCooldownSeconds * 1000,
+        now.getTime() - authConfig.passwordReset.resendCooldownSeconds * 1000,
       );
 
       const recentToken = await PasswordResetToken.findOne({
@@ -218,7 +220,7 @@ export class AuthController {
       const emailTemplate = buildPasswordResetEmailTemplate({
         recipientName: user.fullName,
         resetLink,
-        expiresInMinutes: env.auth.passwordReset.expiryMinutes,
+        expiresInMinutes: authConfig.passwordReset.expiryMinutes,
       });
 
       try {
@@ -346,7 +348,7 @@ export class AuthController {
       statusCode: 202,
       message: FORGOT_PASSWORD_SUCCESS_MESSAGE,
       data: {
-        resendCooldownSeconds: env.auth.passwordReset.resendCooldownSeconds,
+        resendCooldownSeconds: authConfig.passwordReset.resendCooldownSeconds,
       },
     });
   }

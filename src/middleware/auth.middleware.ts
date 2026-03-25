@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { User } from "@models/user.model";
+import { USER_ROLE, User } from "@models/user.model";
 import { serializeAuthUser } from "@utils/auth-user";
 import {
   authCookieName,
@@ -92,7 +92,7 @@ export const requireAdmin = async (
   try {
     await attachAuthenticatedUser(req, res, true);
 
-    if (!req.user || req.user.role !== "ADMIN") {
+    if (!req.user || req.user.role !== USER_ROLE.ADMIN) {
       return next(new AppError("Admin access required", 403));
     }
 

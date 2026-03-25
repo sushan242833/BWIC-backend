@@ -1,5 +1,16 @@
 import { z } from "zod";
 import {
+  CONTACT_INVESTMENT_RANGE_VALUES,
+  NEPAL_PHONE_PATTERN,
+  CONTACT_PROPERTY_TYPE_VALUES,
+} from "@constants/contact";
+import {
+  normalizePropertyStatus,
+  PROPERTY_AREA_NEPALI_FORMAT_HINT,
+  PROPERTY_AREA_NEPALI_PATTERN,
+  PROPERTY_STATUSES,
+} from "@constants/property";
+import {
   propertySortValues,
   validatePropertyFilterCombinations,
 } from "@utils/property-filters";
@@ -29,6 +40,12 @@ const optionalTrimmedString = () =>
   z
     .preprocess(firstString, z.string().optional())
     .transform((value) => value?.trim() || undefined);
+
+const optionalPhoneString = (label: string) =>
+  optionalTrimmedString().refine(
+    (value) => value === undefined || NEPAL_PHONE_PATTERN.test(value),
+    `${label} must be a valid Nepal phone number`,
+  );
 
 const optionalBoolean = () =>
   z.preprocess((value) => {
@@ -131,9 +148,19 @@ export const createContactSchema = z.object({
   email: trimmedString("email").pipe(
     z.string().email("email must be a valid email address"),
   ),
-  phone: optionalTrimmedString(),
-  investmentRange: trimmedString("investmentRange"),
-  propertyType: trimmedString("propertyType"),
+  phone: optionalPhoneString("phone"),
+  investmentRange: z.preprocess(
+    firstString,
+    z.enum(CONTACT_INVESTMENT_RANGE_VALUES, {
+      error: "investmentRange is required",
+    }),
+  ),
+  propertyType: z.preprocess(
+    firstString,
+    z.enum(CONTACT_PROPERTY_TYPE_VALUES, {
+      error: "propertyType is required",
+    }),
+  ),
   message: optionalTrimmedString(),
 });
 
@@ -146,9 +173,37 @@ const passwordString = () =>
   trimmedString("password").pipe(
     z
       .string()
-      .min(8, "password must be at least 8 characters long")
-      .max(72, "password must be 72 characters or fewer"),
+      .min(
+        PASSWORD_MIN_LENGTH,
+        `password must be at least ${PASSWORD_MIN_LENGTH} characters long`,
+      )
+      .max(
+        PASSWORD_MAX_LENGTH,
+        `password must be ${PASSWORD_MAX_LENGTH} characters or fewer`,
+      ),
   );
+
+const propertyStatusSchema = trimmedString("status")
+  .refine(
+    (value) => normalizePropertyStatus(value) !== null,
+    `status must be one of ${PROPERTY_STATUSES.join(", ")}`,
+  )
+  .transform((value) => normalizePropertyStatus(value)!);
+
+const optionalPropertyStatusSchema = optionalTrimmedString()
+  .refine(
+    (value) =>
+      value === undefined || normalizePropertyStatus(value) !== null,
+    `status must be one of ${PROPERTY_STATUSES.join(", ")}`,
+  )
+  .transform((value) =>
+    value === undefined ? undefined : normalizePropertyStatus(value)!,
+  );
+
+const optionalAreaNepaliSchema = optionalTrimmedString().refine(
+  (value) => value === undefined || PROPERTY_AREA_NEPALI_PATTERN.test(value),
+  `areaNepali must match the ${PROPERTY_AREA_NEPALI_FORMAT_HINT} format`,
+);
 
 const strongPasswordString = (label: string) =>
   trimmedString(label).pipe(
@@ -222,7 +277,7 @@ export const propertyListQuerySchema = z
     minRoi: optionalNumber("minRoi"),
     minArea: optionalNumber("minArea"),
     maxDistanceFromHighway: optionalNumber("maxDistanceFromHighway"),
-    status: optionalTrimmedString(),
+    status: optionalPropertyStatusSchema,
     sort: z
       .preprocess(firstString, z.enum(propertySortValues).optional())
       .optional(),
@@ -260,9 +315,9 @@ const propertyBodySchema = z.object({
   location: trimmedString("location"),
   price: trimmedString("price"),
   roi: trimmedString("roi"),
-  status: trimmedString("status"),
+  status: propertyStatusSchema,
   area: trimmedString("area"),
-  areaNepali: optionalTrimmedString(),
+  areaNepali: optionalAreaNepaliSchema,
   distanceFromHighway: optionalNumber("distanceFromHighway"),
   description: trimmedString("description"),
 });

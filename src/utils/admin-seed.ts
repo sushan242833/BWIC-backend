@@ -1,5 +1,5 @@
 import { QueryInterface, QueryTypes, Sequelize } from "sequelize";
-import { UserRole } from "@models/user.model";
+import { USER_ROLE, UserRole } from "@models/user.model";
 import env from "@config/env";
 import { hashPassword } from "@utils/password";
 
@@ -56,7 +56,7 @@ export const seedInitialAdminUser = async ({
       fullName: adminSeed.fullName,
       email: adminSeed.email,
       passwordHash,
-      role: "ADMIN" satisfies UserRole,
+      role: USER_ROLE.ADMIN satisfies UserRole,
       isActive: true,
       createdAt: now,
       updatedAt: now,

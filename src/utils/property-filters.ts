@@ -1,4 +1,10 @@
 import { cast, col, Op, Order, WhereOptions, where } from "sequelize";
+import {
+  normalizePropertyStatus,
+  PROPERTY_DEFAULT_PAGE_SIZE,
+  PROPERTY_MAX_PAGE_SIZE,
+  PropertyStatus,
+} from "@constants/property";
 
 export const propertySortValues = [
   "price_asc",
@@ -17,7 +23,7 @@ export interface PropertyFilterQuery {
   minRoi?: number;
   minArea?: number;
   maxDistanceFromHighway?: number;
-  status?: string;
+  status?: PropertyStatus;
   sort?: PropertySortValue;
   page?: number;
   limit?: number;
@@ -90,7 +96,10 @@ export const buildPropertyWhere = (
   }
 
   if (filters.status) {
-    whereClause.status = { [Op.iLike]: filters.status };
+    const normalizedStatus = normalizePropertyStatus(filters.status);
+    if (normalizedStatus) {
+      whereClause.status = normalizedStatus;
+    }
   }
 
   if (andConditions.length > 0) {
@@ -119,7 +128,10 @@ export const normalizePropertyPagination = ({
   limit,
 }: Pick<PropertyFilterQuery, "page" | "limit">) => {
   const pageValue = Math.max(1, Math.trunc(page || 1));
-  const limitValue = Math.min(50, Math.max(1, Math.trunc(limit || 9)));
+  const limitValue = Math.min(
+    PROPERTY_MAX_PAGE_SIZE,
+    Math.max(1, Math.trunc(limit || PROPERTY_DEFAULT_PAGE_SIZE)),
+  );
 
   return {
     page: pageValue,

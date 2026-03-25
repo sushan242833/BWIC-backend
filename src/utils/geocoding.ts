@@ -1,4 +1,6 @@
 import https from "https";
+import { appConfig } from "@config/app";
+import env from "@config/env";
 
 export interface Coordinates {
   latitude: number;
@@ -6,8 +8,8 @@ export interface Coordinates {
 }
 
 interface NominatimResult {
-  place_id?: number;
-  osm_id?: number;
+  place_id?: number | string;
+  osm_id?: number | string;
   osm_type?: "node" | "way" | "relation";
   class?: string;
   type?: string;
@@ -30,15 +32,8 @@ interface NominatimResult {
   };
 }
 
-const DEFAULT_USER_AGENT = "bluewhale-investment-backend/1.0";
-const DEFAULT_NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org";
-const DEFAULT_TIMEOUT_MS = 4000;
-const DEFAULT_AUTOCOMPLETE_LIMIT = 5;
-const DEFAULT_GEOCODE_LIMIT = 1;
-const DEFAULT_LANGUAGE = "en";
-
 interface GeocodingConfig {
-  provider: "nominatim";
+  provider: typeof appConfig.geocoding.provider;
   baseUrl: string;
   userAgent: string;
   timeoutMs: number;
@@ -48,38 +43,18 @@ interface GeocodingConfig {
   countryCodes?: string;
 }
 
-const parsePositiveInteger = (
-  value: string | undefined,
-  fallback: number,
-): number => {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+type LookupParamName = "osm_ids" | "place_ids";
+
+const config: GeocodingConfig = {
+  provider: appConfig.geocoding.provider,
+  baseUrl: env.geocoding.baseUrl.trim(),
+  userAgent: appConfig.geocoding.userAgent,
+  timeoutMs: appConfig.geocoding.timeoutMs,
+  geocodeLimit: appConfig.geocoding.geocodeLimit,
+  autocompleteLimit: appConfig.geocoding.autocompleteLimit,
+  language: appConfig.geocoding.language,
+  countryCodes: appConfig.geocoding.countryCodes,
 };
-
-const loadGeocodingConfig = (): GeocodingConfig => ({
-  provider: "nominatim",
-  baseUrl: (
-    process.env.GEOCODING_BASE_URL || DEFAULT_NOMINATIM_BASE_URL
-  ).trim(),
-  userAgent: (process.env.NOMINATIM_USER_AGENT || DEFAULT_USER_AGENT).trim(),
-  timeoutMs: parsePositiveInteger(
-    process.env.GEOCODING_TIMEOUT_MS,
-    DEFAULT_TIMEOUT_MS,
-  ),
-  geocodeLimit: parsePositiveInteger(
-    process.env.GEOCODING_GEOCODE_LIMIT,
-    DEFAULT_GEOCODE_LIMIT,
-  ),
-  autocompleteLimit: parsePositiveInteger(
-    process.env.GEOCODING_AUTOCOMPLETE_LIMIT,
-    DEFAULT_AUTOCOMPLETE_LIMIT,
-  ),
-  language: (process.env.GEOCODING_LANGUAGE || DEFAULT_LANGUAGE).trim(),
-  countryCodes: process.env.GEOCODING_COUNTRY_CODES?.trim() || undefined,
-});
-
-const config = loadGeocodingConfig();
 
 const buildNominatimUrl = (query: string, limit: number): URL => {
   const url = new URL("/search", config.baseUrl);
@@ -94,13 +69,72 @@ const buildNominatimUrl = (query: string, limit: number): URL => {
   return url;
 };
 
-const buildNominatimLookupUrl = (placeId: string): URL => {
+const buildNominatimLookupUrl = (
+  paramName: LookupParamName,
+  identifier: string,
+): URL => {
   const url = new URL("/lookup", config.baseUrl);
-  url.searchParams.set("place_ids", placeId);
+  url.searchParams.set(paramName, identifier);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("accept-language", config.language);
   return url;
+};
+
+const OSM_LOOKUP_PREFIX_BY_TYPE: Record<
+  NonNullable<NominatimResult["osm_type"]>,
+  "N" | "W" | "R"
+> = {
+  node: "N",
+  way: "W",
+  relation: "R",
+};
+
+const normalizeIdentifier = (value: number | string | undefined): string =>
+  value === undefined ? "" : String(value).trim();
+
+const toStableLookupIdentifier = (result: NominatimResult): string => {
+  const osmType = result.osm_type;
+  const osmId = normalizeIdentifier(result.osm_id);
+
+  if (osmType && osmId) {
+    return `${OSM_LOOKUP_PREFIX_BY_TYPE[osmType]}${osmId}`;
+  }
+
+  return normalizeIdentifier(result.place_id);
+};
+
+const resolveLookupTarget = (
+  placeId: string,
+): { paramName: LookupParamName; identifier: string } | null => {
+  const normalized = placeId.trim();
+  if (!normalized) return null;
+
+  if (/^[NWR]\d+$/i.test(normalized)) {
+    return {
+      paramName: "osm_ids",
+      identifier: normalized.toUpperCase(),
+    };
+  }
+
+  const legacyOsmReference = normalized.match(/^(node|way|relation):(\d+)$/i);
+  if (legacyOsmReference) {
+    const [, osmType, osmId] = legacyOsmReference;
+    const prefix =
+      OSM_LOOKUP_PREFIX_BY_TYPE[
+        osmType.toLowerCase() as NonNullable<NominatimResult["osm_type"]>
+      ];
+
+    return {
+      paramName: "osm_ids",
+      identifier: `${prefix}${osmId}`,
+    };
+  }
+
+  return {
+    paramName: "place_ids",
+    identifier: normalized,
+  };
 };
 
 const nominatimRequest = <T>(url: URL): Promise<T | null> =>
@@ -183,7 +217,8 @@ export const autocompleteLocations = async (
 
   return parsed
     .map((item) => ({
-      placeId: String(item.place_id || ""),
+      // `place_id` is not stable across Nominatim updates, so prefer OSM ids.
+      placeId: toStableLookupIdentifier(item),
       description: item.display_name || "",
     }))
     .filter((item) => item.placeId && item.description);
@@ -209,7 +244,9 @@ export interface PlaceDetails {
   };
 }
 
-const normalizePlaceDetails = (result: NominatimResult): PlaceDetails | null => {
+const normalizePlaceDetails = (
+  result: NominatimResult,
+): PlaceDetails | null => {
   const lat = Number.parseFloat(result.lat || "");
   const lng = Number.parseFloat(result.lon || "");
   if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
@@ -217,15 +254,15 @@ const normalizePlaceDetails = (result: NominatimResult): PlaceDetails | null => 
   const fullAddress = result.display_name || "";
   if (!fullAddress) return null;
 
-  const primaryText = result.name?.trim() || fullAddress.split(",")[0]?.trim() || "";
-  const secondaryText =
-    fullAddress.startsWith(`${primaryText},`)
-      ? fullAddress.slice(primaryText.length + 1).trim()
-      : fullAddress;
+  const primaryText =
+    result.name?.trim() || fullAddress.split(",")[0]?.trim() || "";
+  const secondaryText = fullAddress.startsWith(`${primaryText},`)
+    ? fullAddress.slice(primaryText.length + 1).trim()
+    : fullAddress;
 
   const id =
-    String(result.place_id || "") ||
-    `${result.osm_type || "place"}:${String(result.osm_id || "")}`;
+    toStableLookupIdentifier(result) ||
+    `${result.osm_type || "place"}:${normalizeIdentifier(result.osm_id)}`;
 
   const types = Array.from(
     new Set([result.addresstype, result.type, result.class].filter(Boolean)),
@@ -262,11 +299,14 @@ const normalizePlaceDetails = (result: NominatimResult): PlaceDetails | null => 
 export const getPlaceDetails = async (
   placeId: string,
 ): Promise<PlaceDetails | null> => {
-  const normalizedPlaceId = placeId.trim();
-  if (!normalizedPlaceId) return null;
+  const lookupTarget = resolveLookupTarget(placeId);
+  if (!lookupTarget) return null;
 
   const parsed = await nominatimRequest<NominatimResult[]>(
-    buildNominatimLookupUrl(normalizedPlaceId),
+    buildNominatimLookupUrl(
+      lookupTarget.paramName,
+      lookupTarget.identifier,
+    ),
   );
   const result = parsed?.[0];
   if (!result) return null;

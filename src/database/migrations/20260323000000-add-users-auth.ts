@@ -1,5 +1,5 @@
 import { Migration } from "./types";
-import { USER_ROLES } from "@models/user.model";
+import { USER_ROLE, USER_ROLES } from "@models/user.model";
 import { seedInitialAdminUser } from "@utils/admin-seed";
 
 const migration: Migration = {
@@ -27,7 +27,7 @@ const migration: Migration = {
       role: {
         type: dataTypes.ENUM(...USER_ROLES),
         allowNull: false,
-        defaultValue: "USER",
+        defaultValue: USER_ROLE.USER,
       },
       isActive: {
         type: dataTypes.BOOLEAN,

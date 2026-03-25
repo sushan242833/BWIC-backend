@@ -1,5 +1,6 @@
 import { CookieOptions, Response } from "express";
 import jwt, { SignOptions } from "jsonwebtoken";
+import authConfig from "@config/auth";
 import env from "@config/env";
 import { UserRole } from "@models/user.model";
 
@@ -17,11 +18,11 @@ const baseCookieOptions = (): CookieOptions => ({
   path: "/",
 });
 
-export const authCookieName = env.auth.cookieName;
+export const authCookieName = authConfig.cookieName;
 
 export const signAuthToken = (payload: AuthTokenPayload): string =>
   jwt.sign(payload, env.auth.jwtSecret, {
-    expiresIn: env.auth.jwtExpiresIn as SignOptions["expiresIn"],
+    expiresIn: authConfig.tokenTtl as SignOptions["expiresIn"],
   });
 
 export const verifyAuthToken = (token: string): AuthTokenPayload =>
@@ -35,8 +36,8 @@ export const setAuthCookie = (
   res.cookie(authCookieName, token, {
     ...baseCookieOptions(),
     maxAge: rememberMe
-      ? env.auth.rememberCookieMaxAgeMs
-      : env.auth.cookieMaxAgeMs,
+      ? authConfig.rememberCookieMaxAgeMs
+      : authConfig.cookieMaxAgeMs,
   });
 };
 

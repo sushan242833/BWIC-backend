@@ -9,6 +9,7 @@
     "paths": {
       "@models/*": ["models/*"],
       "@config/*": ["config/*"],
+      "@constants/*": ["constants/*"],
       "@controller/*": ["controller/*"],
       "@routes/*": ["routes/*"],
       "@utils/*": ["utils/*"],

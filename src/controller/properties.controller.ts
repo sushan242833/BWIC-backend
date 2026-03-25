@@ -17,6 +17,7 @@ import {
   resolveCreatePropertyImages,
   resolveUpdatePropertyImages,
 } from "@utils/property-images";
+import { normalizePropertyStatus } from "@constants/property";
 import {
   serializePropertyDetail,
   serializePropertySummary,
@@ -151,7 +152,7 @@ export class PropertyController {
         longitude,
         price: request.price,
         roi: request.roi,
-        status: request.status,
+        status: normalizePropertyStatus(request.status) ?? request.status,
         area: request.area,
         areaNepali: request.areaNepali,
         distanceFromHighway,
@@ -237,7 +238,7 @@ export class PropertyController {
         longitude: coordinates.longitude,
         price: request.price,
         roi: request.roi,
-        status: request.status,
+        status: normalizePropertyStatus(request.status) ?? request.status,
         area: request.area,
         areaNepali: request.areaNepali,
         distanceFromHighway,

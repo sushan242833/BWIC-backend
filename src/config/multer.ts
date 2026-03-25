@@ -1,31 +1,38 @@
-import multer from "multer";
+import multer, { FileFilterCallback } from "multer";
+import crypto from "crypto";
 import path from "path";
-import * as fs from "fs";
 import { Request } from "express";
-import env from "./env";
-import { PROPERTY_IMAGE_UPLOAD_LIMIT } from "@utils/property-images";
-
-const uploadDirectory = path.isAbsolute(env.uploads.dir)
-  ? env.uploads.dir
-  : path.resolve(process.cwd(), env.uploads.dir);
+import {
+  ensureUploadDirectory,
+  uploadDirectory,
+  uploadsConfig,
+} from "@config/uploads";
+import {
+  PROPERTY_IMAGE_MIME_TYPES,
+  PROPERTY_IMAGE_UPLOAD_LIMIT,
+} from "@constants/property";
 
 const storage = multer.diskStorage({
   destination: function (req, file, callback) {
-    if (!fs.existsSync(uploadDirectory)) {
-      fs.mkdirSync(uploadDirectory, { recursive: true });
-    }
+    ensureUploadDirectory();
     callback(null, uploadDirectory);
   },
   filename: function (req, file, callback) {
-    const filename = new Date().getTime();
-    const extension = file.originalname.split(".");
-    callback(null, `${filename}.${extension[extension.length - 1]}`);
+    const extension = path.extname(file.originalname).toLowerCase();
+    callback(null, `${Date.now()}-${crypto.randomUUID()}${extension}`);
   },
 });
 
-const fileFilter = (req: Request, file: Express.Multer.File, callback: any) => {
-  const validMimeType = ["image/jpg", "image/png", "image/jpeg"];
-  if (validMimeType.includes(file.mimetype)) {
+const fileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  callback: FileFilterCallback,
+) => {
+  if (
+    PROPERTY_IMAGE_MIME_TYPES.includes(
+      file.mimetype as (typeof PROPERTY_IMAGE_MIME_TYPES)[number],
+    )
+  ) {
     callback(null, true);
   } else {
     callback(new Error("file format not supported"));
@@ -33,10 +40,10 @@ const fileFilter = (req: Request, file: Express.Multer.File, callback: any) => {
 };
 
 export const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+  storage,
+  fileFilter,
   limits: {
-    fileSize: env.uploads.maxFileSizeBytes,
+    fileSize: uploadsConfig.maxFileSizeBytes,
     files: PROPERTY_IMAGE_UPLOAD_LIMIT,
   },
 });

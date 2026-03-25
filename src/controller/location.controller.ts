@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { appConfig } from "@config/app";
 import { autocompleteLocations, getPlaceDetails } from "@utils/geocoding";
 import { sendSuccess } from "@utils/api-response";
 import { AppError } from "../middleware/error.middleware";
@@ -17,7 +18,7 @@ export class LocationController {
     try {
       const query = this.extractQueryString(req.query.q)?.trim() || "";
 
-      if (query.length < 2) {
+      if (query.length < appConfig.geocoding.minimumQueryLength) {
         return sendSuccess(res, {
           message: "Location suggestions fetched successfully",
           data: [],

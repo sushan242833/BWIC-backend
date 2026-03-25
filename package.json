@@ -4,12 +4,16 @@
   "description": "This is the backend for the blue whale investment company",
   "license": "ISC",
   "author": "Sushan Poudel",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon --watch src --ext ts --ignore dist --exec \"ts-node --require tsconfig-paths/register src/index.ts\"",
-    "db:migrate": "ts-node --require tsconfig-paths/register src/database/migrate.ts",
-    "auth:seed-admin": "ts-node --require tsconfig-paths/register src/database/seed-admin.ts"
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean --silent && tsc",
+    "start": "node --require ./dist/register-paths.js dist/index.js",
+    "db:migrate": "npm run build --silent && node --require ./dist/register-paths.js dist/database/migrate.js",
+    "auth:seed-admin": "ts-node --require tsconfig-paths/register src/database/seed-admin.ts",
+    "auth:seed-admin:prod": "npm run build --silent && node --require ./dist/register-paths.js dist/database/seed-admin.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

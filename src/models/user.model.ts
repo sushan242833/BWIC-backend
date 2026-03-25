@@ -17,6 +17,10 @@ import { Optional } from "sequelize";
 import { PasswordResetToken } from "@models/password-reset-token.model";
 
 export const USER_ROLES = ["ADMIN", "USER"] as const;
+export const USER_ROLE = {
+  ADMIN: USER_ROLES[0],
+  USER: USER_ROLES[1],
+} as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 
@@ -61,7 +65,7 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
   passwordHash!: string;
 
   @AllowNull(false)
-  @Default("USER")
+  @Default(USER_ROLE.USER)
   @Column(DataType.ENUM(...USER_ROLES))
   role!: UserRole;
 

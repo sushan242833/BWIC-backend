@@ -1,7 +1,11 @@
+import { uploadPublicBasePath, toUploadPublicPath } from "@config/uploads";
+import {
+  PROPERTY_IMAGE_FIELD_NAME,
+  PROPERTY_IMAGE_UPLOAD_LIMIT,
+} from "@constants/property";
 import { AppError } from "../middleware/error.middleware";
 
-export const PROPERTY_IMAGE_FIELD_NAME = "images";
-export const PROPERTY_IMAGE_UPLOAD_LIMIT = 10;
+export { PROPERTY_IMAGE_FIELD_NAME, PROPERTY_IMAGE_UPLOAD_LIMIT };
 
 const ensureLeadingSlash = (value: string) =>
   value.startsWith("/") ? value : `/${value}`;
@@ -22,8 +26,10 @@ export const normalizeImagePath = (value: string): string => {
     }
   }
 
-  if (trimmed.includes("/uploads/")) {
-    return ensureLeadingSlash(trimmed.slice(trimmed.indexOf("/uploads/")));
+  if (trimmed.includes(`${uploadPublicBasePath}/`)) {
+    return ensureLeadingSlash(
+      trimmed.slice(trimmed.indexOf(`${uploadPublicBasePath}/`)),
+    );
   }
 
   return ensureLeadingSlash(trimmed);
@@ -41,7 +47,7 @@ export const normalizeImagePaths = (values: string[] = []): string[] =>
 export const mapUploadedFilesToImagePaths = (
   files: Express.Multer.File[] = [],
 ): string[] =>
-  normalizeImagePaths(files.map((file) => `/uploads/${file.filename}`));
+  normalizeImagePaths(files.map((file) => toUploadPublicPath(file.filename)));
 
 export const parseExistingImagesInput = (value: unknown): string[] => {
   if (value === undefined || value === null || value === "") {

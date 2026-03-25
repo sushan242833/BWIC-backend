@@ -1,4 +1,8 @@
 import {
+  getRecommendationRoiPoints,
+  recommendationConfig,
+} from "@config/recommendation";
+import {
   RecommendationExplanationDto,
   RecommendationPreferencesDto,
   RecommendationScoreBreakdownDto,
@@ -31,18 +35,14 @@ export interface RecommendationScore {
   scoreBreakdown?: RecommendationScoreBreakdownDto;
 }
 
-const WEIGHTS = {
-  location: 35,
-  price: 35,
-  roi: 5,
-  area: 20,
-  distance: 5,
-} as const;
+const WEIGHTS = recommendationConfig.scoreWeights;
 
-const DEFAULT_LOCATION_RADIUS_KM = 5;
-const STRONG_MATCH_THRESHOLD_PERCENT = 60;
-const CLOSE_PRICE_DELTA_RATIO = 0.1;
-const CLOSE_AREA_DELTA_RATIO = 0.15;
+const DEFAULT_LOCATION_RADIUS_KM =
+  recommendationConfig.defaultLocationRadiusKm;
+const STRONG_MATCH_THRESHOLD_PERCENT =
+  recommendationConfig.strongMatchThresholdPercent;
+const CLOSE_PRICE_DELTA_RATIO = recommendationConfig.closePriceDeltaRatio;
+const CLOSE_AREA_DELTA_RATIO = recommendationConfig.closeAreaDeltaRatio;
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const parseMetric = (value: string | number | null | undefined) => {
@@ -124,7 +124,7 @@ const haversineKm = (
   lng2: number,
 ): number => {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const earthRadiusKm = 6371;
+  const earthRadiusKm = recommendationConfig.earthRadiusKm;
 
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
@@ -312,18 +312,7 @@ export const scoreProperty = (
     let points = 0;
     if (roi !== undefined) {
       const roiDifference = preferences.roi - roi;
-      points =
-        roi >= preferences.roi
-          ? WEIGHTS.roi
-          : roiDifference === 1
-            ? 4
-            : roiDifference === 2
-              ? 3
-              : roiDifference === 3
-                ? 2
-                : roiDifference === 4
-                  ? 1
-                  : 0;
+      points = getRecommendationRoiPoints(roiDifference);
     }
     score += points;
     let reason = "ROI data missing, so ROI preference could not be scored";

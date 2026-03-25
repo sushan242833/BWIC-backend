@@ -11,6 +11,10 @@ import {
   UpdatedAt,
 } from "sequelize-typescript";
 import { Optional } from "sequelize";
+import {
+  PROPERTY_AREA_NEPALI_PATTERN,
+  PropertyStatus,
+} from "@constants/property";
 
 import { Category } from "./category.model";
 
@@ -23,7 +27,7 @@ export interface PropertyAttributes {
   longitude?: number;
   price: string;
   roi: string;
-  status: string;
+  status: PropertyStatus;
   area: string;
   areaNepali?: string;
   distanceFromHighway?: number;
@@ -80,7 +84,7 @@ export class Property extends Model<
   roi!: string;
 
   @Column({ type: DataType.STRING, allowNull: false })
-  status!: string;
+  status!: PropertyStatus;
 
   @Column({ type: DataType.STRING, allowNull: false })
   area!: string;
@@ -89,7 +93,7 @@ export class Property extends Model<
     type: DataType.STRING,
     allowNull: true,
     validate: {
-      is: /^\d+-\d+-\d+-\d+(\.\d+)?$/, // Ensures format like 0-0-0-0 // Only last part allows decimals
+      is: PROPERTY_AREA_NEPALI_PATTERN,
     },
   })
   areaNepali?: string;
