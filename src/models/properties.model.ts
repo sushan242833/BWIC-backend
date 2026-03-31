@@ -25,10 +25,10 @@ export interface PropertyAttributes {
   location: string;
   latitude?: number;
   longitude?: number;
-  price: string;
-  roi: string;
+  price: number;
+  roi: number;
   status: PropertyStatus;
-  area: string;
+  area: number;
   areaNepali?: string;
   distanceFromHighway?: number;
   images: string[];
@@ -77,17 +77,17 @@ export class Property extends Model<
   @Column({ type: DataType.DOUBLE, allowNull: true })
   longitude?: number;
 
-  @Column({ type: DataType.STRING, allowNull: false })
-  price!: string;
+  @Column({ type: DataType.DOUBLE, allowNull: false })
+  price!: number;
 
-  @Column({ type: DataType.STRING, allowNull: false })
-  roi!: string;
+  @Column({ type: DataType.DOUBLE, allowNull: false })
+  roi!: number;
 
   @Column({ type: DataType.STRING, allowNull: false })
   status!: PropertyStatus;
 
-  @Column({ type: DataType.STRING, allowNull: false })
-  area!: string;
+  @Column({ type: DataType.DOUBLE, allowNull: false })
+  area!: number;
 
   @Column({
     type: DataType.STRING,

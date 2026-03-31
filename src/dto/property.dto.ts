@@ -5,12 +5,12 @@ export interface CreatePropertyDto {
   title: string;
   categoryId: number | string;
   location: string;
-  price: string;
-  roi: string;
+  price: number;
+  roi: number;
   status: PropertyStatus;
-  area: string;
+  area: number;
   areaNepali?: string;
-  distanceFromHighway?: number | string;
+  distanceFromHighway?: number;
   images?: string[];
   description: string;
 }

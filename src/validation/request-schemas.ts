@@ -127,6 +127,27 @@ const optionalNumber = (label: string, min = 0) =>
       .optional(),
   );
 
+const requiredNumber = (label: string, min = 0) =>
+  z.preprocess(
+    (value) => {
+      const candidate = firstString(value);
+
+      if (typeof candidate === "number") {
+        return candidate;
+      }
+
+      if (typeof candidate === "string") {
+        const parsed = Number.parseFloat(candidate.replace(/,/g, "").trim());
+        return Number.isNaN(parsed) ? candidate : parsed;
+      }
+
+      return candidate;
+    },
+    z
+      .number({ error: `${label} must be a number` })
+      .min(min, `${label} must be at least ${min}`),
+  );
+
 const positiveIntParam = (label: string) =>
   z
     .preprocess(firstString, z.string({ error: `${label} is required` }))
@@ -192,8 +213,7 @@ const propertyStatusSchema = trimmedString("status")
 
 const optionalPropertyStatusSchema = optionalTrimmedString()
   .refine(
-    (value) =>
-      value === undefined || normalizePropertyStatus(value) !== null,
+    (value) => value === undefined || normalizePropertyStatus(value) !== null,
     `status must be one of ${PROPERTY_STATUSES.join(", ")}`,
   )
   .transform((value) =>
@@ -313,10 +333,10 @@ const propertyBodySchema = z.object({
       .positive("categoryId must be a positive integer"),
   ),
   location: trimmedString("location"),
-  price: trimmedString("price"),
-  roi: trimmedString("roi"),
+  price: requiredNumber("price"),
+  roi: requiredNumber("roi"),
   status: propertyStatusSchema,
-  area: trimmedString("area"),
+  area: requiredNumber("area"),
   areaNepali: optionalAreaNepaliSchema,
   distanceFromHighway: optionalNumber("distanceFromHighway"),
   description: trimmedString("description"),

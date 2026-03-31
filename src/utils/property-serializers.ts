@@ -14,10 +14,10 @@ export interface PropertySummaryDto {
     name: string;
   } | null;
   location: string;
-  price: string;
-  roi: string;
+  price: number;
+  roi: number;
   status: string;
-  area: string;
+  area: number;
   areaNepali?: string;
   distanceFromHighway?: number;
   images: string[];

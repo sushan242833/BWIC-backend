@@ -50,11 +50,11 @@ const migration: Migration = {
         allowNull: true,
       },
       price: {
-        type: dataTypes.STRING,
+        type: dataTypes.DOUBLE,
         allowNull: false,
       },
       roi: {
-        type: dataTypes.STRING,
+        type: dataTypes.DOUBLE,
         allowNull: false,
       },
       status: {
@@ -62,7 +62,7 @@ const migration: Migration = {
         allowNull: false,
       },
       area: {
-        type: dataTypes.STRING,
+        type: dataTypes.DOUBLE,
         allowNull: false,
       },
       areaNepali: {

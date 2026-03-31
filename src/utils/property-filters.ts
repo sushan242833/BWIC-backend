@@ -1,4 +1,4 @@
-import { cast, col, Op, Order, WhereOptions, where } from "sequelize";
+import { Op, Order, WhereOptions } from "sequelize";
 import {
   normalizePropertyStatus,
   PROPERTY_DEFAULT_PAGE_SIZE,
@@ -46,7 +46,6 @@ export const buildPropertyWhere = (
   filters: PropertyFilterQuery,
 ): WhereOptions => {
   const whereClause: WhereOptions = {};
-  const andConditions = [];
 
   if (filters.location) {
     whereClause.location = { [Op.iLike]: `%${filters.location}%` };
@@ -57,35 +56,31 @@ export const buildPropertyWhere = (
   }
 
   if (filters.minPrice !== undefined) {
-    andConditions.push(
-      where(cast(col("price"), "DOUBLE PRECISION"), {
-        [Op.gte]: filters.minPrice,
-      }),
-    );
+    whereClause.price = {
+      ...(whereClause.price as object),
+      [Op.gte]: filters.minPrice,
+    };
   }
 
   if (filters.maxPrice !== undefined) {
-    andConditions.push(
-      where(cast(col("price"), "DOUBLE PRECISION"), {
-        [Op.lte]: filters.maxPrice,
-      }),
-    );
+    whereClause.price = {
+      ...(whereClause.price as object),
+      [Op.lte]: filters.maxPrice,
+    };
   }
 
   if (filters.minRoi !== undefined) {
-    andConditions.push(
-      where(cast(col("roi"), "DOUBLE PRECISION"), {
-        [Op.gte]: filters.minRoi,
-      }),
-    );
+    whereClause.roi = {
+      ...(whereClause.roi as object),
+      [Op.gte]: filters.minRoi,
+    };
   }
 
   if (filters.minArea !== undefined) {
-    andConditions.push(
-      where(cast(col("area"), "DOUBLE PRECISION"), {
-        [Op.gte]: filters.minArea,
-      }),
-    );
+    whereClause.area = {
+      ...(whereClause.area as object),
+      [Op.gte]: filters.minArea,
+    };
   }
 
   if (filters.maxDistanceFromHighway !== undefined) {
@@ -102,20 +97,13 @@ export const buildPropertyWhere = (
     }
   }
 
-  if (andConditions.length > 0) {
-    return {
-      ...whereClause,
-      [Op.and]: andConditions,
-    };
-  }
-
   return whereClause;
 };
 
 const propertyOrderMap: Record<PropertySortValue, Order> = {
-  price_asc: [[cast(col("price"), "DOUBLE PRECISION"), "ASC"]],
-  price_desc: [[cast(col("price"), "DOUBLE PRECISION"), "DESC"]],
-  roi_desc: [[cast(col("roi"), "DOUBLE PRECISION"), "DESC"]],
+  price_asc: [["price", "ASC"]],
+  price_desc: [["price", "DESC"]],
+  roi_desc: [["roi", "DESC"]],
   newest: [["createdAt", "DESC"]],
 };
 

@@ -18,9 +18,9 @@ export interface RecommendationProperty {
   status: string;
   latitude?: number | null;
   longitude?: number | null;
-  price?: string | null;
-  roi?: string | null;
-  area?: string | null;
+  price?: number | null;
+  roi?: number | null;
+  area?: number | null;
   distanceFromHighway?: number | null;
 }
 
@@ -37,22 +37,17 @@ export interface RecommendationScore {
 
 const WEIGHTS = recommendationConfig.scoreWeights;
 
-const DEFAULT_LOCATION_RADIUS_KM =
-  recommendationConfig.defaultLocationRadiusKm;
+const DEFAULT_LOCATION_RADIUS_KM = recommendationConfig.defaultLocationRadiusKm;
 const STRONG_MATCH_THRESHOLD_PERCENT =
   recommendationConfig.strongMatchThresholdPercent;
 const CLOSE_PRICE_DELTA_RATIO = recommendationConfig.closePriceDeltaRatio;
 const CLOSE_AREA_DELTA_RATIO = recommendationConfig.closeAreaDeltaRatio;
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
-const parseMetric = (value: string | number | null | undefined) => {
-  if (value === null || value === undefined) return undefined;
-  const numeric =
-    typeof value === "number"
-      ? value
-      : Number.parseFloat(String(value).replace(/,/g, "").trim());
-  return Number.isNaN(numeric) ? undefined : numeric;
-};
+const parseMetric = (value: number | null | undefined) =>
+  value === null || value === undefined || Number.isNaN(value)
+    ? undefined
+    : value;
 
 const roundScore = (value: number) => round2(Math.max(0, value));
 
@@ -167,9 +162,9 @@ export const scoreProperty = (
     if (
       property.latitude !== null &&
       property.latitude !== undefined &&
-        property.longitude !== null &&
-        property.longitude !== undefined
-      ) {
+      property.longitude !== null &&
+      property.longitude !== undefined
+    ) {
       const distanceKm = haversineKm(
         preferences.latitude,
         preferences.longitude,
@@ -430,7 +425,8 @@ export const scoreProperty = (
         "Distance from highway data is missing, so accessibility fit could not be confirmed",
       );
     } else if (
-      toPercentOfWeight(points, WEIGHTS.distance) >= STRONG_MATCH_THRESHOLD_PERCENT
+      toPercentOfWeight(points, WEIGHTS.distance) >=
+      STRONG_MATCH_THRESHOLD_PERCENT
     ) {
       pushUnique(topReasons, reason);
     } else {
