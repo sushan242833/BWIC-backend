@@ -6,6 +6,7 @@ const aliasMap = {
   "@config": path.resolve(__dirname, "config"),
   "@constants": path.resolve(__dirname, "constants"),
   "@controller": path.resolve(__dirname, "controller"),
+  "@services": path.resolve(__dirname, "services"),
   "@routes": path.resolve(__dirname, "routes"),
   "@utils": path.resolve(__dirname, "utils"),
   "@dto": path.resolve(__dirname, "dto"),

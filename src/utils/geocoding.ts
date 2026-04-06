@@ -44,6 +44,8 @@ interface GeocodingConfig {
 }
 
 type LookupParamName = "osm_ids" | "place_ids";
+const NEPAL_COUNTRY_CODE = "NP";
+const NEPAL_COUNTRY_NAME = "nepal";
 
 const config: GeocodingConfig = {
   provider: appConfig.geocoding.provider,
@@ -60,7 +62,7 @@ const buildNominatimUrl = (query: string, limit: number): URL => {
   const url = new URL("/search", config.baseUrl);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("addressdetails", "0");
+  url.searchParams.set("addressdetails", "1");
   url.searchParams.set("accept-language", config.language);
   url.searchParams.set("limit", String(limit));
   if (config.countryCodes) {
@@ -176,6 +178,24 @@ const nominatimRequest = <T>(url: URL): Promise<T | null> =>
     request.on("error", () => resolve(null));
   });
 
+export const isNepalLocationResult = (result: NominatimResult): boolean => {
+  const countryCode = result.address?.country_code?.trim().toUpperCase();
+  if (countryCode) {
+    return countryCode === NEPAL_COUNTRY_CODE;
+  }
+
+  const country = result.address?.country?.trim().toLowerCase();
+  if (country) {
+    return country === NEPAL_COUNTRY_NAME;
+  }
+
+  return result.display_name?.toLowerCase().includes("nepal") ?? false;
+};
+
+const filterNepalLocationResults = (
+  results?: NominatimResult[] | null,
+): NominatimResult[] => (results || []).filter(isNepalLocationResult);
+
 export const geocodeLocation = async (
   location: string,
 ): Promise<Coordinates | null> => {
@@ -186,7 +206,7 @@ export const geocodeLocation = async (
   const parsed = await nominatimRequest<NominatimResult[]>(
     buildNominatimUrl(location.trim(), config.geocodeLimit),
   );
-  const point = parsed?.[0];
+  const point = filterNepalLocationResults(parsed)[0];
   if (!point) return null;
 
   const latitude = Number.parseFloat(point.lat || "");
@@ -213,15 +233,21 @@ export const autocompleteLocations = async (
   const parsed = await nominatimRequest<NominatimResult[]>(
     buildNominatimUrl(query.trim(), config.autocompleteLimit),
   );
-  if (!parsed?.length) return [];
+  const nepalResults = filterNepalLocationResults(parsed);
+  if (!nepalResults.length) return [];
 
-  return parsed
+  return nepalResults
     .map((item) => ({
       // `place_id` is not stable across Nominatim updates, so prefer OSM ids.
       placeId: toStableLookupIdentifier(item),
       description: item.display_name || "",
     }))
-    .filter((item) => item.placeId && item.description);
+    .filter((item) => item.placeId && item.description)
+    .filter(
+      (item, index, items) =>
+        items.findIndex((candidate) => candidate.placeId === item.placeId) ===
+        index,
+    );
 };
 
 export interface PlaceDetails {
@@ -309,7 +335,7 @@ export const getPlaceDetails = async (
     ),
   );
   const result = parsed?.[0];
-  if (!result) return null;
+  if (!result || !isNepalLocationResult(result)) return null;
 
   return normalizePlaceDetails(result);
 };

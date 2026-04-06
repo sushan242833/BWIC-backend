@@ -11,6 +11,7 @@
       "@config/*": ["config/*"],
       "@constants/*": ["constants/*"],
       "@controller/*": ["controller/*"],
+      "@services/*": ["services/*"],
       "@routes/*": ["routes/*"],
       "@utils/*": ["utils/*"],
       "@dto/*": ["dto/*"]

@@ -1,10 +1,19 @@
-import { Op, Order, WhereOptions } from "sequelize";
+import {
+  Op,
+  Order,
+  WhereOptions,
+  cast,
+  col,
+  fn,
+  where as sequelizeWhere,
+} from "sequelize";
 import {
   normalizePropertyStatus,
   PROPERTY_DEFAULT_PAGE_SIZE,
   PROPERTY_MAX_PAGE_SIZE,
   PropertyStatus,
 } from "@constants/property";
+import { buildLocationSearchProfile } from "@utils/nlp/location-parser";
 
 export const propertySortValues = [
   "price_asc",
@@ -16,6 +25,7 @@ export const propertySortValues = [
 export type PropertySortValue = (typeof propertySortValues)[number];
 
 export interface PropertyFilterQuery {
+  search?: string;
   location?: string;
   categoryId?: number;
   minPrice?: number;
@@ -28,6 +38,17 @@ export interface PropertyFilterQuery {
   page?: number;
   limit?: number;
 }
+
+export type RecommendationPropertyFilterQuery = Pick<
+  PropertyFilterQuery,
+  | "location"
+  | "categoryId"
+  | "maxPrice"
+  | "minRoi"
+  | "minArea"
+  | "maxDistanceFromHighway"
+  | "status"
+>;
 
 export const validatePropertyFilterCombinations = (
   value: PropertyFilterQuery,
@@ -46,9 +67,13 @@ export const buildPropertyWhere = (
   filters: PropertyFilterQuery,
 ): WhereOptions => {
   const whereClause: WhereOptions = {};
+  const andConditions: WhereOptions[] = [];
 
   if (filters.location) {
-    whereClause.location = { [Op.iLike]: `%${filters.location}%` };
+    const locationWhere = buildPropertyLocationWhere(filters.location);
+    if (locationWhere) {
+      andConditions.push(locationWhere);
+    }
   }
 
   if (filters.categoryId !== undefined) {
@@ -97,7 +122,45 @@ export const buildPropertyWhere = (
     }
   }
 
-  return whereClause;
+  const searchWhere = buildPropertySearchWhere(filters.search);
+  if (searchWhere) {
+    andConditions.push(searchWhere);
+  }
+
+  if (andConditions.length === 0) {
+    return whereClause;
+  }
+
+  if (Object.keys(whereClause).length === 0 && andConditions.length === 1) {
+    return andConditions[0];
+  }
+
+  return {
+    [Op.and]: [whereClause, ...andConditions],
+  };
+};
+
+export const buildRecommendationPropertyWhere = (
+  filters: RecommendationPropertyFilterQuery,
+): WhereOptions => {
+  const baseWhere = buildPropertyWhere({
+    ...filters,
+    search: undefined,
+    location: undefined,
+  });
+  const locationWhere = buildPropertyLocationWhere(filters.location);
+
+  if (!locationWhere) {
+    return baseWhere;
+  }
+
+  if (Object.keys(baseWhere).length === 0) {
+    return locationWhere;
+  }
+
+  return {
+    [Op.and]: [baseWhere, locationWhere],
+  };
 };
 
 const propertyOrderMap: Record<PropertySortValue, Order> = {
@@ -126,4 +189,144 @@ export const normalizePropertyPagination = ({
     limit: limitValue,
     offset: (pageValue - 1) * limitValue,
   };
+};
+
+const RECOMMENDATION_LOCATION_FIELDS = [
+  "location",
+  "title",
+  "description",
+] as const;
+
+const buildNormalizedLocationExpression = (fieldName: string) =>
+  fn(
+    "trim",
+    fn(
+      "regexp_replace",
+      fn("lower", fn("coalesce", col(fieldName), "")),
+      "[^a-z0-9]+",
+      " ",
+      "g",
+    ),
+  );
+
+const buildPropertyLocationWhere = (
+  location?: string,
+): WhereOptions | undefined => {
+  const profile = buildLocationSearchProfile(location);
+  if (!profile) {
+    return undefined;
+  }
+
+  const conditions: WhereOptions[] = [];
+
+  for (const fieldName of RECOMMENDATION_LOCATION_FIELDS) {
+    const normalizedField = buildNormalizedLocationExpression(fieldName);
+
+    for (const variant of profile.normalizedAliases) {
+      conditions.push(
+        sequelizeWhere(normalizedField, {
+          [Op.like]: `%${variant}%`,
+        }),
+      );
+    }
+
+    if (profile.significantTokens.length > 1) {
+      conditions.push({
+        [Op.and]: profile.significantTokens.map((token) =>
+          sequelizeWhere(normalizedField, {
+            [Op.like]: `%${token}%`,
+          }),
+        ),
+      });
+    }
+  }
+
+  return conditions.length > 0
+    ? {
+        [Op.or]: conditions,
+      }
+    : undefined;
+};
+
+const PROPERTY_SEARCH_FIELDS = ["title", "location"] as const;
+
+const PROPERTY_MAIN_TABLE_ALIAS = "Property";
+
+const normalizeSearchText = (value?: string): string =>
+  (value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+
+const buildPropertySearchWhere = (
+  search?: string,
+): WhereOptions | undefined => {
+  const normalizedSearch = normalizeSearchText(search);
+  if (!normalizedSearch) {
+    return undefined;
+  }
+
+  const searchTokens = normalizedSearch
+    .split(" ")
+    .filter((token) => token.length > 0);
+
+  const phraseConditions: WhereOptions[] = PROPERTY_SEARCH_FIELDS.map((field) =>
+    sequelizeWhere(buildNormalizedLocationExpression(field), {
+      [Op.like]: `%${normalizedSearch}%`,
+    }),
+  );
+
+  const tokenConditions = searchTokens
+    .filter((token) => token.length > 1)
+    .map<WhereOptions>((token) => {
+      const conditions: WhereOptions[] = PROPERTY_SEARCH_FIELDS.map((field) =>
+        sequelizeWhere(buildNormalizedLocationExpression(field), {
+          [Op.like]: `%${token}%`,
+        }),
+      );
+
+      if (/^\d+$/.test(token)) {
+        conditions.push(
+          sequelizeWhere(cast(col(`${PROPERTY_MAIN_TABLE_ALIAS}.id`), "text"), {
+            [Op.like]: `%${token}%`,
+          }),
+        );
+      }
+
+      return {
+        [Op.or]: conditions,
+      };
+    });
+
+  const disjunctions: WhereOptions[] = [];
+
+  if (phraseConditions.length > 0) {
+    disjunctions.push({
+      [Op.or]: phraseConditions,
+    });
+  }
+
+  if (tokenConditions.length > 1) {
+    disjunctions.push({
+      [Op.and]: tokenConditions,
+    });
+  } else if (tokenConditions.length === 1) {
+    disjunctions.push(tokenConditions[0]);
+  }
+
+  if (/^\d+$/.test(normalizedSearch)) {
+    disjunctions.push(
+      sequelizeWhere(
+        col(`${PROPERTY_MAIN_TABLE_ALIAS}.id`),
+        Number.parseInt(normalizedSearch, 10),
+      ),
+    );
+  }
+
+  return disjunctions.length > 0
+    ? {
+        [Op.or]: disjunctions,
+      }
+    : undefined;
 };

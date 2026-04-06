@@ -13,6 +13,8 @@ import {
   normalizePropertyPagination,
   resolvePropertyOrder,
 } from "@utils/property-filters";
+import { resolveCategoryCandidate } from "@utils/nlp/category-parser";
+import { parsePropertySearchQuery } from "@utils/nlp/property-search-parser";
 import {
   resolveCreatePropertyImages,
   resolveUpdatePropertyImages,
@@ -93,7 +95,38 @@ export class PropertyController {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const filters = req.query as unknown as PropertyListQueryDto;
-      const where = buildPropertyWhere(filters);
+      const parsedSearch = parsePropertySearchQuery(filters.search);
+
+      let inferredCategoryId = filters.categoryId;
+      if (inferredCategoryId === undefined && parsedSearch.category) {
+        const categories = await Category.findAll({
+          attributes: ["id", "name"],
+        });
+        inferredCategoryId =
+          resolveCategoryCandidate(
+            parsedSearch.category,
+            categories.map((category) => ({
+              id: category.id,
+              name: category.name,
+            })),
+          )?.id ??
+          undefined;
+      }
+
+      const resolvedFilters: PropertyListQueryDto = {
+        ...filters,
+        search: parsedSearch.textSearch,
+        location: filters.location || parsedSearch.location,
+        categoryId: inferredCategoryId,
+        maxPrice: filters.maxPrice ?? parsedSearch.maxPrice,
+        minRoi: filters.minRoi ?? parsedSearch.minRoi,
+        minArea: filters.minArea ?? parsedSearch.minArea,
+        maxDistanceFromHighway:
+          filters.maxDistanceFromHighway ?? parsedSearch.maxDistanceFromHighway,
+        status: filters.status ?? parsedSearch.status,
+      };
+
+      const where = buildPropertyWhere(resolvedFilters);
       const order = resolvePropertyOrder(filters.sort);
       const pagination = normalizePropertyPagination(filters);
 

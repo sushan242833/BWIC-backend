@@ -127,6 +127,12 @@ const optionalNumber = (label: string, min = 0) =>
       .optional(),
   );
 
+const optionalInteger = (label: string, min = 1) =>
+  optionalNumber(label, min).refine(
+    (value) => value === undefined || Number.isInteger(value),
+    `${label} must be an integer`,
+  );
+
 const requiredNumber = (label: string, min = 0) =>
   z.preprocess(
     (value) => {
@@ -290,6 +296,7 @@ export const placeDetailsQuerySchema = z.object({
 
 export const propertyListQuerySchema = z
   .object({
+    search: optionalTrimmedString(),
     location: optionalTrimmedString(),
     categoryId: optionalNumber("categoryId", 1),
     minPrice: optionalNumber("minPrice"),
@@ -350,6 +357,8 @@ export const updatePropertySchema = propertyBodySchema.extend({
 
 const recommendationPreferencesSchema = z
   .object({
+    categoryId: optionalInteger("preferences.categoryId"),
+    category: optionalTrimmedString(),
     location: optionalTrimmedString(),
     latitude: optionalNumber("preferences.latitude"),
     longitude: optionalNumber("preferences.longitude"),
@@ -360,6 +369,7 @@ const recommendationPreferencesSchema = z
     maxDistanceFromHighway: optionalNumber(
       "preferences.maxDistanceFromHighway",
     ),
+    status: optionalPropertyStatusSchema,
   })
   .superRefine((value, ctx) => {
     if (
@@ -378,10 +388,24 @@ const recommendationPreferencesSchema = z
 const recommendationPaginationSchema = z.object({
   page: optionalNumber("page", 1),
   limit: optionalNumber("limit", 1),
+  });
+
+const recommendationMustHaveSchema = z.object({
+  categoryId: optionalInteger("mustHave.categoryId"),
+  category: optionalTrimmedString(),
+  location: optionalTrimmedString(),
+  maxPrice: optionalNumber("mustHave.maxPrice"),
+  minRoi: optionalNumber("mustHave.minRoi"),
+  minArea: optionalNumber("mustHave.minArea"),
+  maxDistanceFromHighway: optionalNumber("mustHave.maxDistanceFromHighway"),
+  status: optionalPropertyStatusSchema,
 });
 
 export const recommendationQuerySchema = z
   .object({
+    brief: optionalTrimmedString(),
+    categoryId: optionalInteger("categoryId"),
+    category: optionalTrimmedString(),
     location: optionalTrimmedString(),
     latitude: optionalNumber("latitude"),
     longitude: optionalNumber("longitude"),
@@ -390,6 +414,17 @@ export const recommendationQuerySchema = z
     roi: optionalNumber("roi"),
     area: optionalNumber("area"),
     maxDistanceFromHighway: optionalNumber("maxDistanceFromHighway"),
+    status: optionalPropertyStatusSchema,
+    mustHaveCategoryId: optionalInteger("mustHaveCategoryId"),
+    mustHaveCategory: optionalTrimmedString(),
+    mustHaveLocation: optionalTrimmedString(),
+    maxPrice: optionalNumber("maxPrice"),
+    minRoi: optionalNumber("minRoi"),
+    minArea: optionalNumber("minArea"),
+    mustHaveMaxDistanceFromHighway: optionalNumber(
+      "mustHaveMaxDistanceFromHighway",
+    ),
+    mustHaveStatus: optionalPropertyStatusSchema,
     preferredLocation: optionalTrimmedString(),
     preferredLatitude: optionalNumber("preferredLatitude"),
     preferredLongitude: optionalNumber("preferredLongitude"),
@@ -417,6 +452,8 @@ export const recommendationQuerySchema = z
 
 export const recommendationBodySchema = z
   .object({
+    brief: optionalTrimmedString(),
+    mustHave: recommendationMustHaveSchema.optional(),
     preferences: recommendationPreferencesSchema.optional(),
   })
   .merge(recommendationPaginationSchema);

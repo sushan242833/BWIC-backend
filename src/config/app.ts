@@ -10,7 +10,7 @@ export const appConfig = {
     geocodeLimit: 1,
     autocompleteLimit: 5,
     minimumQueryLength: 2,
-    countryCodes: undefined as string | undefined,
+    countryCodes: "np",
   },
 } as const;
 

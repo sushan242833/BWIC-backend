@@ -7,6 +7,10 @@ import {
   RecommendationPreferencesDto,
   RecommendationScoreBreakdownDto,
 } from "@dto/recommendation.dto";
+import {
+  buildLocationSearchProfile,
+  matchLocationText,
+} from "@utils/nlp/location-parser";
 
 export interface RecommendationPreferences extends RecommendationPreferencesDto {}
 
@@ -14,6 +18,7 @@ export interface RecommendationProperty {
   id?: number;
   title: string;
   location: string;
+  description?: string;
   categoryId: number;
   status: string;
   latitude?: number | null;
@@ -145,6 +150,17 @@ export const scoreProperty = (
   const scoreBreakdown: RecommendationScoreBreakdownDto = {};
   let score = 0;
   let maxPossible = 0;
+  const locationProfile = preferences.location
+    ? buildLocationSearchProfile(preferences.location)
+    : undefined;
+  const locationTextMatch = matchLocationText(
+    {
+      location: property.location,
+      title: property.title,
+      description: property.description,
+    },
+    locationProfile,
+  );
 
   if (
     preferences.latitude !== undefined &&
@@ -153,6 +169,9 @@ export const scoreProperty = (
     maxPossible += WEIGHTS.location;
 
     let points = 0;
+    const textPoints = locationTextMatch.matched
+      ? round2(WEIGHTS.location * locationTextMatch.ratio)
+      : 0;
     const radiusKm =
       preferences.locationRadiusKm !== undefined &&
       preferences.locationRadiusKm > 0
@@ -171,18 +190,28 @@ export const scoreProperty = (
         property.latitude,
         property.longitude,
       );
-      points = safeRatioScore(WEIGHTS.location, distanceKm / radiusKm);
+      const distancePoints = safeRatioScore(
+        WEIGHTS.location,
+        distanceKm / radiusKm,
+      );
+      points = Math.max(distancePoints, textPoints);
       const percent = toPercentOfWeight(points, WEIGHTS.location);
-      const reason =
+      const distanceReason =
         distanceKm <= radiusKm
           ? `Near your preferred location at about ${formatCompactNumber(distanceKm)} km away`
           : `Farther from your preferred location at about ${formatCompactNumber(distanceKm)} km away`;
+      const reason =
+        textPoints >= distancePoints && locationTextMatch.matched
+          ? locationTextMatch.reason
+          : distanceReason;
       explanation.push(
         createExplanation(
           "location",
           reason,
           points,
-          distanceKm <= radiusKm ? "positive" : "negative",
+          points > 0 && (distanceKm <= radiusKm || locationTextMatch.matched)
+            ? "positive"
+            : "negative",
         ),
       );
       if (percent >= STRONG_MATCH_THRESHOLD_PERCENT) {
@@ -191,23 +220,21 @@ export const scoreProperty = (
         pushUnique(penalties, reason);
       }
     } else {
-      if (preferences.location) {
-        const matched = property.location
-          .toLowerCase()
-          .includes(preferences.location.toLowerCase());
-        points = matched ? WEIGHTS.location : 0;
-        const reason = matched
-          ? `Near your preferred location based on the listed area`
-          : `Does not appear to be near your preferred location based on the listed area`;
+      if (locationTextMatch.matched) {
+        points = textPoints;
+        const reason = locationTextMatch.reason;
         explanation.push(
           createExplanation(
             "location",
             reason,
             points,
-            matched ? "positive" : "negative",
+            "positive",
           ),
         );
-        if (matched) {
+        if (
+          toPercentOfWeight(points, WEIGHTS.location) >=
+          STRONG_MATCH_THRESHOLD_PERCENT
+        ) {
           pushUnique(topReasons, reason);
         } else {
           pushUnique(penalties, reason);
@@ -232,23 +259,25 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "location", points);
   } else if (preferences.location) {
     maxPossible += WEIGHTS.location;
-    const matched = property.location
-      .toLowerCase()
-      .includes(preferences.location.toLowerCase());
-    const points = matched ? WEIGHTS.location : 0;
+    const points = locationTextMatch.matched
+      ? round2(WEIGHTS.location * locationTextMatch.ratio)
+      : 0;
     score += points;
-    const reason = matched
-      ? "Near your preferred location"
+    const reason = locationTextMatch.matched
+      ? locationTextMatch.reason
       : "Not in your preferred location";
     explanation.push(
       createExplanation(
         "location",
         reason,
         points,
-        matched ? "positive" : "negative",
+        locationTextMatch.matched ? "positive" : "negative",
       ),
     );
-    if (matched) {
+    if (
+      toPercentOfWeight(points, WEIGHTS.location) >=
+      STRONG_MATCH_THRESHOLD_PERCENT
+    ) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);

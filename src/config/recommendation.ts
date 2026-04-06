@@ -3,7 +3,7 @@ export const recommendationConfig = {
   minimumMatchPercentage: 30,
   defaultPageSize: 5,
   maxPageSize: 20,
-  defaultLocationRadiusKm: 3,
+  defaultLocationRadiusKm: 5,
   strongMatchThresholdPercent: 60,
   closePriceDeltaRatio: 0.1,
   closeAreaDeltaRatio: 0.15,
