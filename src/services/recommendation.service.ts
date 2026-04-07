@@ -117,11 +117,30 @@ export class RecommendationService {
       (preferences.latitude !== undefined &&
         preferences.longitude !== undefined) ||
       (preferences.price !== undefined && preferences.price > 0) ||
+      (preferences.priceCeiling !== undefined && preferences.priceCeiling > 0) ||
       (preferences.roi !== undefined && preferences.roi > 0) ||
       (preferences.area !== undefined && preferences.area > 0) ||
       (preferences.maxDistanceFromHighway !== undefined &&
         preferences.maxDistanceFromHighway > 0),
     );
+  }
+
+  private buildScoringPreferences(
+    preferences: RecommendationPreferences,
+    mustHave: RecommendationRequestDto["mustHave"],
+  ): RecommendationPreferences {
+    if (
+      preferences.price !== undefined ||
+      mustHave?.maxPrice === undefined ||
+      mustHave.maxPrice <= 0
+    ) {
+      return preferences;
+    }
+
+    return {
+      ...preferences,
+      priceCeiling: mustHave.maxPrice,
+    };
   }
 
   buildRequestFromQuery(
@@ -224,8 +243,12 @@ export class RecommendationService {
   ): Promise<RecommendationServiceResponse> {
     const { page, limit } = this.normalizePagination(input.page, input.limit);
     const parsedQuery = await recommendationQueryParserService.parse(input);
-    const preferences = await this.enrichLocationCoordinates(
+    const basePreferences = await this.enrichLocationCoordinates(
       parsedQuery.preferences,
+    );
+    const preferences = this.buildScoringPreferences(
+      basePreferences,
+      parsedQuery.mustHave,
     );
     const hasScoringPreferences = this.hasScoringPreferences(preferences);
     const filterQuery = this.buildFilterQuery(parsedQuery.mustHave);
@@ -287,7 +310,7 @@ export class RecommendationService {
       meta: {
         parsedBrief: {
           ...parsedQuery.parsedBrief,
-          appliedPreferences: preferences,
+          appliedPreferences: basePreferences,
         },
       },
     };

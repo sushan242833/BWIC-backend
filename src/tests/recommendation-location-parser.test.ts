@@ -51,7 +51,7 @@ test("keeps price parsing while extracting a nearby locality", () => {
   assert.equal(result.mustHave.location, undefined);
   assert.equal(result.preferences.location, "Koteshwor");
   assert.equal(result.mustHave.maxPrice, 20000000);
-  assert.equal(result.preferences.price, 20000000);
+  assert.equal(result.preferences.price, undefined);
   assert.equal(result.detectedLocation?.mode, "nearby");
 });
 

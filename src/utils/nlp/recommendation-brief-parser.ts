@@ -122,8 +122,12 @@ export const parseRecommendationBrief = (
   }
 
   const locations = parseLocationCandidates(normalizedBrief);
-  const strictLocation = locations.find((location) => location.mode === "strict");
-  const nearbyLocation = locations.find((location) => location.mode === "nearby");
+  const strictLocation = locations.find(
+    (location) => location.mode === "strict",
+  );
+  const nearbyLocation = locations.find(
+    (location) => location.mode === "nearby",
+  );
   const preferredLocation = nearbyLocation || strictLocation;
 
   result.detectedLocations = locations;
@@ -159,7 +163,6 @@ export const parseRecommendationBrief = (
     );
     if (parsedPrice !== undefined) {
       result.mustHave.maxPrice = parsedPrice;
-      result.preferences.price = parsedPrice;
       pushEntity(result.detectedEntities, {
         type: "maxPrice",
         value: parsedPrice,

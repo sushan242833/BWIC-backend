@@ -12,7 +12,9 @@ import {
   matchLocationText,
 } from "@utils/nlp/location-parser";
 
-export interface RecommendationPreferences extends RecommendationPreferencesDto {}
+export interface RecommendationPreferences extends RecommendationPreferencesDto {
+  priceCeiling?: number;
+}
 
 export interface RecommendationProperty {
   id?: number;
@@ -285,41 +287,67 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "location", points);
   }
 
-  if (preferences.price !== undefined && preferences.price > 0) {
+  if (
+    (preferences.price !== undefined && preferences.price > 0) ||
+    (preferences.priceCeiling !== undefined && preferences.priceCeiling > 0)
+  ) {
     maxPossible += WEIGHTS.price;
     const price = parseMetric(property.price);
-    const points =
-      price === undefined
-        ? 0
-        : safeRatioScore(
-            WEIGHTS.price,
-            Math.abs(price - preferences.price) / preferences.price,
-          );
-    score += points;
+    const hasPreferredPrice =
+      preferences.price !== undefined && preferences.price > 0;
+    const priceCeiling =
+      preferences.priceCeiling !== undefined && preferences.priceCeiling > 0
+        ? preferences.priceCeiling
+        : undefined;
+    let points = 0;
     let reason = "Price data missing, so price preference could not be scored";
     let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
 
     if (price !== undefined) {
-      const differenceRatio =
-        Math.abs(price - preferences.price) / preferences.price;
-      if (differenceRatio <= CLOSE_PRICE_DELTA_RATIO) {
-        reason = "Close to your preferred price";
-        sentiment = "positive";
-      } else if (price <= preferences.price) {
-        reason = "Within your preferred price, but not especially close";
-        sentiment = points > 0 ? "positive" : "negative";
+      if (hasPreferredPrice) {
+        if (price <= preferences.price!) {
+          points = WEIGHTS.price;
+          reason = "Within your preferred price";
+          sentiment = "positive";
+        } else {
+          points = safeRatioScore(
+            WEIGHTS.price,
+            (price - preferences.price!) / preferences.price!,
+          );
+          reason = "Above your preferred price";
+          sentiment = points > 0 ? "neutral" : "negative";
+        }
+      } else if (priceCeiling !== undefined) {
+        if (price <= priceCeiling) {
+          points = WEIGHTS.price;
+          reason = "Within your maximum budget";
+          sentiment = "positive";
+        } else {
+          points = safeRatioScore(
+            WEIGHTS.price,
+            (price - priceCeiling) / priceCeiling,
+          );
+          reason = "Above your maximum budget";
+          sentiment = points > 0 ? "neutral" : "negative";
+        }
       } else {
-        reason = "Above your preferred price";
-        sentiment = points > 0 ? "neutral" : "negative";
+        points = 0;
       }
     }
 
+    score += points;
     explanation.push(createExplanation("price", reason, points, sentiment));
     if (price === undefined) {
       pushUnique(
         penalties,
         "Price data is missing, so price fit could not be confirmed",
       );
+    } else if (priceCeiling !== undefined) {
+      if (price <= priceCeiling) {
+        pushUnique(topReasons, reason);
+      } else {
+        pushUnique(penalties, reason);
+      }
     } else if (
       toPercentOfWeight(points, WEIGHTS.price) >= STRONG_MATCH_THRESHOLD_PERCENT
     ) {

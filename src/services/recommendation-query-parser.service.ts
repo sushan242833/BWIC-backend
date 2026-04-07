@@ -398,7 +398,6 @@ export class RecommendationQueryParserService {
 
     if (extraction.maxPrice !== undefined) {
       mapped.mustHave.maxPrice = extraction.maxPrice;
-      mapped.preferences.price = extraction.maxPrice;
       this.pushDetectedEntity(detectedEntities, {
         type: "maxPrice",
         value: extraction.maxPrice,

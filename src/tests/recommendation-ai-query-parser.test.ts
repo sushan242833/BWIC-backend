@@ -38,7 +38,7 @@ test("maps AI extraction into the existing recommendation request contract", asy
   assert.equal(result.mustHave.location, undefined);
   assert.equal(result.mustHave.maxPrice, 30000000);
   assert.equal(result.preferences.location, "Bafal");
-  assert.equal(result.preferences.price, 30000000);
+  assert.equal(result.preferences.price, undefined);
   assert.equal(result.parsedBrief.extractionSource, "ai");
   assert.equal(result.parsedBrief.locationMode, "nearby");
   assert.equal(result.parsedBrief.aiExtraction?.bedrooms, 2);
