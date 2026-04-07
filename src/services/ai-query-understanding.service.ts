@@ -26,10 +26,7 @@ interface OpenAIChatCompletionResponse {
   choices?: Array<{
     finish_reason?: string | null;
     message?: {
-      content?:
-        | string
-        | Array<{ type?: string; text?: string }>
-        | null;
+      content?: string | Array<{ type?: string; text?: string }> | null;
       refusal?: string | null;
     };
   }>;
@@ -63,14 +60,24 @@ Return JSON only. Do not explain anything outside JSON.
 
 Rules:
 - Interpret Nepali real-estate language such as home, house, apartment, flat, land, plot, ghaderi, lakh, crore, Kathmandu, Lalitpur, Bhaktapur, Baneshwor, Kalanki, Koteshwor, Bafal, Gongabu, and landmarks like schools or hospitals.
+- Return price fields in integer Nepalese rupees (NPR).
 - Convert lakh/crore mentions into integer NPR values.
+- Return area fields in square feet.
+- Convert Nepali land units before returning area fields.
+- Hills conversion table: 1 ropani = 5476 sq ft, 1 aana/anna = 342.25 sq ft, 1 paisa = 85.5625 sq ft, 1 daam/dam = 21.390625 sq ft.
+- Terai conversion table: 1 bigha = 72900 sq ft, 1 kattha/katha = 3645 sq ft, 1 dhur = 182.25 sq ft.
+- Never return area in square meters for this API.
+- Detect any currency from all over the world but convert and return all price fields in integer NPR.
 - Use location.mode="strict" for direct location filters like "in kathmandu" or "at lalitpur".
 - Use location.mode="nearby" for softer proximity phrases like "near bafal", "around kalanki", "close to baneshwor", or landmark-style nearby references.
 - Use location.mode="soft" only when a location preference exists but the cue is weak.
 - If a field is not present or uncertain, return null for that field.
 - Do not invent facts. Only extract what is supported by the query.
-- "easy access to highway" or "near highway" should map to a small maxDistanceFromHighway when clearly implied.
-- Schools, hospitals, chowks, landmarks, and local areas are valid locations or landmark preferences. Do not reject them.
+- Use preferredRoi for qualitative ROI hints without an explicit number.
+- Map "good roi", "high roi", or "strong roi" to preferredRoi=10.
+- Map "very high roi" to preferredRoi=15.
+- Map "easy access to highway", "near highway", "close to highway", or similar phrases without an explicit distance to maxDistanceFromHighway=1.
+- Schools, hospitals, chowks, landmarks, and local areas are valid locations or landmark preferences except for around 200 m from highway as we have that for distance from highway. Do not reject them.
 `.trim();
 
 const buildUserPrompt = (brief: string) =>
@@ -83,11 +90,7 @@ const toRequestUrl = (baseUrl: string): URL =>
   new URL("chat/completions", normalizeBaseUrl(baseUrl));
 
 const readMessageContent = (
-  content:
-    | string
-    | Array<{ type?: string; text?: string }>
-    | null
-    | undefined,
+  content: string | Array<{ type?: string; text?: string }> | null | undefined,
 ): string | null => {
   if (typeof content === "string") {
     const trimmed = content.trim();
@@ -209,20 +212,20 @@ const createChatCompletionRequester = (options: {
 const hasStructuredOutput = (value: AIRecommendationExtraction): boolean =>
   Boolean(
     value.category ||
-      value.location?.value ||
-      value.maxPrice !== undefined ||
-      value.minPrice !== undefined ||
-      value.bedrooms !== undefined ||
-      value.bathrooms !== undefined ||
-      value.parking !== undefined ||
-      value.furnished !== undefined ||
-      value.minArea !== undefined ||
-      value.preferredArea !== undefined ||
-      value.minRoi !== undefined ||
-      value.preferredRoi !== undefined ||
-      value.maxDistanceFromHighway !== undefined ||
-      value.landmarkPreference ||
-      value.status,
+    value.location?.value ||
+    value.maxPrice !== undefined ||
+    value.minPrice !== undefined ||
+    value.bedrooms !== undefined ||
+    value.bathrooms !== undefined ||
+    value.parking !== undefined ||
+    value.furnished !== undefined ||
+    value.minArea !== undefined ||
+    value.preferredArea !== undefined ||
+    value.minRoi !== undefined ||
+    value.preferredRoi !== undefined ||
+    value.maxDistanceFromHighway !== undefined ||
+    value.landmarkPreference ||
+    value.status,
   );
 
 export class AIQueryUnderstandingService {
@@ -239,8 +242,10 @@ export class AIQueryUnderstandingService {
   constructor(options: AIQueryUnderstandingServiceOptions = {}) {
     this.apiKey = options.apiKey ?? env.ai.apiKey;
     this.baseUrl = options.baseUrl ?? env.ai.baseUrl;
-    this.model = options.model ?? env.ai.model ?? appConfig.aiQuery.defaultModel;
-    this.timeoutMs = options.timeoutMs ?? env.ai.timeoutMs ?? appConfig.aiQuery.timeoutMs;
+    this.model =
+      options.model ?? env.ai.model ?? appConfig.aiQuery.defaultModel;
+    this.timeoutMs =
+      options.timeoutMs ?? env.ai.timeoutMs ?? appConfig.aiQuery.timeoutMs;
     this.enabled = options.enabled ?? env.ai.enabled;
     this.requestChatCompletion =
       options.requestChatCompletion ??

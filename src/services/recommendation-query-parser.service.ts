@@ -21,10 +21,7 @@ import {
   buildLocationSearchProfile,
   type LocationSearchProfile,
 } from "@utils/nlp/location-parser";
-import {
-  parseRecommendationBrief,
-  type RecommendationBriefParserResult,
-} from "@utils/nlp/recommendation-brief-parser";
+import { parseRecommendationBrief } from "@utils/nlp/recommendation-brief-parser";
 import type { AIRecommendationExtraction } from "@utils/ai/recommendation-ai-schema";
 
 export interface ParsedRecommendationQueryResult {
@@ -38,7 +35,13 @@ type CategorySelection = {
   category?: string;
 };
 
-interface RecommendationParsedBriefSource extends RecommendationBriefParserResult {
+interface RecommendationParsedBriefSource {
+  mustHave: RecommendationMustHaveDto;
+  preferences: RecommendationPreferencesDto;
+  detectedEntities: RecommendationDetectedEntityDto[];
+  detectedLocation?: RecommendationDetectedLocationDto;
+  detectedLocations: RecommendationDetectedLocationDto[];
+  warnings: string[];
   extractionSource?: RecommendationExtractionSource;
   extractionConfidence?: number;
   locationMode?: RecommendationLocationMode;
@@ -334,7 +337,6 @@ export class RecommendationQueryParserService {
   }
 
   private mapAIExtractionToParsedBrief(
-    brief: string,
     extraction: AIRecommendationExtraction,
   ): RecommendationParsedBriefSource {
     const detectedEntities: RecommendationDetectedEntityDto[] = [];
@@ -484,8 +486,7 @@ export class RecommendationQueryParserService {
     }
 
     if (extraction.maxDistanceFromHighway !== undefined) {
-      mapped.mustHave.maxDistanceFromHighway =
-        extraction.maxDistanceFromHighway;
+      mapped.mustHave.maxDistanceFromHighway = extraction.maxDistanceFromHighway;
       mapped.preferences.maxDistanceFromHighway =
         extraction.maxDistanceFromHighway;
       this.pushDetectedEntity(detectedEntities, {
@@ -519,55 +520,6 @@ export class RecommendationQueryParserService {
     return mapped;
   }
 
-  private mergeDetectedEntities(
-    primary: RecommendationDetectedEntityDto[],
-    secondary: RecommendationDetectedEntityDto[],
-  ): RecommendationDetectedEntityDto[] {
-    const merged: RecommendationDetectedEntityDto[] = [];
-
-    [...primary, ...secondary].forEach((entity) => {
-      this.pushDetectedEntity(merged, entity);
-    });
-
-    return merged;
-  }
-
-  private mergeParsedBriefs(
-    aiParsed: RecommendationParsedBriefSource,
-    fallbackParsed: RecommendationBriefParserResult,
-  ): RecommendationParsedBriefSource {
-    return {
-      mustHave: omitUndefined({
-        ...fallbackParsed.mustHave,
-        ...aiParsed.mustHave,
-      }),
-      preferences: omitUndefined({
-        ...fallbackParsed.preferences,
-        ...aiParsed.preferences,
-      }),
-      detectedEntities: this.mergeDetectedEntities(
-        aiParsed.detectedEntities,
-        fallbackParsed.detectedEntities,
-      ),
-      detectedLocation:
-        aiParsed.detectedLocation || fallbackParsed.detectedLocation,
-      detectedLocations:
-        aiParsed.detectedLocations.length > 0
-          ? aiParsed.detectedLocations
-          : fallbackParsed.detectedLocations,
-      warnings: [...aiParsed.warnings],
-      extractionSource: "ai",
-      extractionConfidence:
-        aiParsed.extractionConfidence ??
-        fallbackParsed.detectedLocation?.confidence,
-      locationMode:
-        aiParsed.locationMode ??
-        aiParsed.detectedLocation?.mode ??
-        fallbackParsed.detectedLocation?.mode,
-      aiExtraction: aiParsed.aiExtraction,
-    };
-  }
-
   private async parseBriefWithAI(
     brief?: string,
   ): Promise<RecommendationParsedBriefSource | null> {
@@ -585,21 +537,45 @@ export class RecommendationQueryParserService {
       return null;
     }
 
-    return this.mapAIExtractionToParsedBrief(
-      normalizedBrief,
-      aiResult.extraction,
-    );
+    return this.mapAIExtractionToParsedBrief(aiResult.extraction);
   }
 
-  private buildRuleBasedParsedBrief(
+  private parseBriefWithFallback(
+    brief?: string,
+  ): RecommendationParsedBriefSource | null {
+    const normalizedBrief = this.normalizeString(brief);
+    if (!normalizedBrief) {
+      return null;
+    }
+
+    const fallbackResult = parseRecommendationBrief(normalizedBrief);
+
+    return {
+      mustHave: fallbackResult.mustHave,
+      preferences: fallbackResult.preferences,
+      detectedEntities: fallbackResult.detectedEntities,
+      detectedLocation: fallbackResult.detectedLocation,
+      detectedLocations: fallbackResult.detectedLocations,
+      warnings: fallbackResult.warnings,
+      extractionSource: "rule_based_fallback",
+      locationMode: fallbackResult.detectedLocation?.mode,
+    };
+  }
+
+  private buildEmptyParsedBrief(
     brief?: string,
   ): RecommendationParsedBriefSource {
-    const parsedBrief = parseRecommendationBrief(brief);
+    const normalizedBrief = this.normalizeString(brief);
     return {
-      ...parsedBrief,
-      extractionSource: brief ? "rule_based_fallback" : undefined,
-      extractionConfidence: parsedBrief.detectedLocation?.confidence,
-      locationMode: parsedBrief.detectedLocation?.mode,
+      mustHave: {},
+      preferences: {},
+      detectedEntities: [],
+      detectedLocations: [],
+      warnings: normalizedBrief
+        ? [
+            "Free-text brief was ignored because AI extraction did not return a usable result.",
+          ]
+        : [],
     };
   }
 
@@ -607,11 +583,14 @@ export class RecommendationQueryParserService {
     input: RecommendationRequestDto,
   ): Promise<ParsedRecommendationQueryResult> {
     const brief = this.normalizeString(input.brief);
-    const ruleBasedParsedBrief = this.buildRuleBasedParsedBrief(brief);
     const aiParsedBrief = await this.parseBriefWithAI(brief);
-    const parsedBrief = aiParsedBrief
-      ? this.mergeParsedBriefs(aiParsedBrief, ruleBasedParsedBrief)
-      : ruleBasedParsedBrief;
+    const fallbackParsedBrief = aiParsedBrief
+      ? null
+      : this.parseBriefWithFallback(brief);
+    const parsedBrief =
+      aiParsedBrief ??
+      fallbackParsedBrief ??
+      this.buildEmptyParsedBrief(brief);
     const manualMustHave = this.sanitizeMustHave(input.mustHave);
     const manualPreferences = this.sanitizePreferences(input.preferences);
 

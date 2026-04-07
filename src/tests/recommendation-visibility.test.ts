@@ -29,7 +29,7 @@ const createResult = (
   ...overrides,
 });
 
-test("filters out recommendation results with 0 percent match", () => {
+test("keeps zero-score recommendations so ranking stays non-filtering", () => {
   const visible = filterVisibleRecommendations(
     [
       createResult({ matchPercentage: 0, score: 0 }),
@@ -42,11 +42,12 @@ test("filters out recommendation results with 0 percent match", () => {
     },
   );
 
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0]?.matchPercentage, 42);
+  assert.equal(visible.length, 2);
+  assert.equal(visible[0]?.matchPercentage, 0);
+  assert.equal(visible[1]?.matchPercentage, 42);
 });
 
-test("keeps non-zero recommendations only when there are no active scoring preferences", () => {
+test("keeps low-score recommendations even when scoring preferences are active", () => {
   const visible = filterVisibleRecommendations(
     [
       createResult({ matchPercentage: 0, score: 0 }),
@@ -59,6 +60,7 @@ test("keeps non-zero recommendations only when there are no active scoring prefe
     },
   );
 
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0]?.matchPercentage, 12);
+  assert.equal(visible.length, 2);
+  assert.equal(visible[0]?.matchPercentage, 0);
+  assert.equal(visible[1]?.matchPercentage, 12);
 });

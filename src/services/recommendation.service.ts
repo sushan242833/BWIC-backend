@@ -12,10 +12,6 @@ import type { PaginationMeta } from "@utils/api-response";
 import { geocodeLocation } from "@utils/geocoding";
 import { serializePropertySummary } from "@utils/property-serializers";
 import {
-  buildRecommendationPropertyWhere,
-  type RecommendationPropertyFilterQuery,
-} from "@utils/property-filters";
-import {
   RecommendationPreferences,
   scoreProperty,
 } from "@utils/recommendation";
@@ -35,20 +31,8 @@ interface RecommendationVisibilityOptions {
 
 export const filterVisibleRecommendations = (
   items: RecommendationResultDto[],
-  options: RecommendationVisibilityOptions,
-): RecommendationResultDto[] =>
-  items
-    .filter((item) => item.matchPercentage > 0)
-    .filter(
-      (item) =>
-        !options.hasLocationPreference ||
-        (item.scoreBreakdown?.location ?? 0) > 0,
-    )
-    .filter(
-      (item) =>
-        !options.hasScoringPreferences ||
-        item.matchPercentage >= options.minimumMatchPercentage,
-    );
+  _options: RecommendationVisibilityOptions,
+): RecommendationResultDto[] => items;
 
 export class RecommendationService {
   private readonly topRecommendationLimit =
@@ -129,17 +113,29 @@ export class RecommendationService {
     preferences: RecommendationPreferences,
     mustHave: RecommendationRequestDto["mustHave"],
   ): RecommendationPreferences {
-    if (
-      preferences.price !== undefined ||
-      mustHave?.maxPrice === undefined ||
-      mustHave.maxPrice <= 0
-    ) {
-      return preferences;
-    }
-
     return {
       ...preferences,
-      priceCeiling: mustHave.maxPrice,
+      location: preferences.location ?? mustHave?.location,
+      priceCeiling:
+        preferences.price !== undefined ||
+        mustHave?.maxPrice === undefined ||
+        mustHave.maxPrice <= 0
+          ? preferences.priceCeiling
+          : mustHave.maxPrice,
+      roi:
+        preferences.roi !== undefined && preferences.roi > 0
+          ? preferences.roi
+          : mustHave?.minRoi,
+      area:
+        preferences.area !== undefined && preferences.area > 0
+          ? preferences.area
+          : mustHave?.minArea,
+      maxDistanceFromHighway:
+        preferences.maxDistanceFromHighway !== undefined &&
+        preferences.maxDistanceFromHighway > 0
+          ? preferences.maxDistanceFromHighway
+          : mustHave?.maxDistanceFromHighway,
+      status: preferences.status ?? mustHave?.status,
     };
   }
 
@@ -224,20 +220,6 @@ export class RecommendationService {
     };
   }
 
-  private buildFilterQuery(
-    mustHave: RecommendationRequestDto["mustHave"],
-  ): RecommendationPropertyFilterQuery {
-    return {
-      location: mustHave?.location,
-      categoryId: mustHave?.categoryId,
-      maxPrice: mustHave?.maxPrice,
-      minRoi: mustHave?.minRoi,
-      minArea: mustHave?.minArea,
-      maxDistanceFromHighway: mustHave?.maxDistanceFromHighway,
-      status: mustHave?.status,
-    };
-  }
-
   async getRecommendations(
     input: RecommendationRequestDto,
   ): Promise<RecommendationServiceResponse> {
@@ -251,10 +233,17 @@ export class RecommendationService {
       parsedQuery.mustHave,
     );
     const hasScoringPreferences = this.hasScoringPreferences(preferences);
-    const filterQuery = this.buildFilterQuery(parsedQuery.mustHave);
+    const candidateWhere = {
+      ...(parsedQuery.mustHave?.categoryId !== undefined
+        ? { categoryId: parsedQuery.mustHave.categoryId }
+        : {}),
+      ...(parsedQuery.mustHave?.status
+        ? { status: parsedQuery.mustHave.status }
+        : {}),
+    };
 
     const candidates = await Property.findAll({
-      where: buildRecommendationPropertyWhere(filterQuery),
+      where: candidateWhere,
       order: [["createdAt", "DESC"]],
       attributes: { exclude: ["created_at", "updated_at"] },
       include: [

@@ -15,12 +15,6 @@ export const recommendationConfig = {
     area: 20,
     distance: 5,
   },
-  roiShortfallPoints: {
-    1: 4,
-    2: 3,
-    3: 2,
-    4: 1,
-  } as const,
 } as const;
 
 export type RecommendationScoreKey =
@@ -38,13 +32,5 @@ export const RECOMMENDATION_SCORE_LABELS: Record<
 };
 
 export const getRecommendationRoiPoints = (difference: number): number => {
-  if (difference <= 0) {
-    return recommendationConfig.scoreWeights.roi;
-  }
-
-  return (
-    recommendationConfig.roiShortfallPoints[
-      difference as keyof typeof recommendationConfig.roiShortfallPoints
-    ] ?? 0
-  );
+  return difference <= 0 ? recommendationConfig.scoreWeights.roi : 0;
 };
