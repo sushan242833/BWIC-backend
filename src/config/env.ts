@@ -139,6 +139,11 @@ const rawEnvSchema = z
     INITIAL_ADMIN_PASSWORD: optionalStringSchema,
     UPLOAD_DIR: optionalStringSchema,
     GEOCODING_BASE_URL: optionalUrlSchema("GEOCODING_BASE_URL"),
+    OPENAI_API_KEY: optionalStringSchema,
+    OPENAI_BASE_URL: optionalUrlSchema("OPENAI_BASE_URL"),
+    AI_QUERY_MODEL: optionalStringSchema,
+    AI_QUERY_ENABLED: booleanSchema("AI_QUERY_ENABLED"),
+    AI_QUERY_TIMEOUT_MS: positiveIntSchema("AI_QUERY_TIMEOUT_MS", 6000).optional(),
   })
   .superRefine((env, ctx) => {
     if (
@@ -277,6 +282,15 @@ const runtimeEnvSchema = z.object({
   geocoding: z.object({
     baseUrl: z.string().url(),
   }),
+  ai: z.object({
+    provider: z.literal("openai"),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().url(),
+    model: z.string().min(1),
+    timeoutMs: z.number().int().gt(0),
+    enabled: z.boolean(),
+    isConfigured: z.boolean(),
+  }),
   mail: z.object({
     host: z.string().optional(),
     port: z.number().int().gt(0),
@@ -382,6 +396,15 @@ const runtimeEnv = parseWithSchema(runtimeEnvSchema, {
   },
   geocoding: {
     baseUrl: rawEnv.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org",
+  },
+  ai: {
+    provider: "openai" as const,
+    apiKey: rawEnv.OPENAI_API_KEY,
+    baseUrl: rawEnv.OPENAI_BASE_URL || "https://api.openai.com/v1",
+    model: rawEnv.AI_QUERY_MODEL || "gpt-4o-mini",
+    timeoutMs: rawEnv.AI_QUERY_TIMEOUT_MS ?? 6000,
+    enabled: rawEnv.AI_QUERY_ENABLED ?? true,
+    isConfigured: Boolean(rawEnv.OPENAI_API_KEY),
   },
   mail: {
     host: rawEnv.SMTP_HOST,

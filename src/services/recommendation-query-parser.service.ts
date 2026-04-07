@@ -1,4 +1,9 @@
 import type {
+  RecommendationAIExtractionDto,
+  RecommendationDetectedEntityDto,
+  RecommendationDetectedLocationDto,
+  RecommendationExtractionSource,
+  RecommendationLocationMode,
   RecommendationMustHaveDto,
   RecommendationParsedBriefMetadataDto,
   RecommendationPreferencesDto,
@@ -6,11 +11,21 @@ import type {
 } from "@dto/recommendation.dto";
 import { Category } from "@models/category.model";
 import { normalizePropertyStatus } from "@constants/property";
+import aiQueryUnderstandingService from "@services/ai-query-understanding.service";
 import {
+  parseCategoryCandidate,
   resolveCategoryCandidate,
   type CategoryLike,
 } from "@utils/nlp/category-parser";
-import { parseRecommendationBrief } from "@utils/nlp/recommendation-brief-parser";
+import {
+  buildLocationSearchProfile,
+  type LocationSearchProfile,
+} from "@utils/nlp/location-parser";
+import {
+  parseRecommendationBrief,
+  type RecommendationBriefParserResult,
+} from "@utils/nlp/recommendation-brief-parser";
+import type { AIRecommendationExtraction } from "@utils/ai/recommendation-ai-schema";
 
 export interface ParsedRecommendationQueryResult {
   mustHave: RecommendationMustHaveDto;
@@ -23,12 +38,39 @@ type CategorySelection = {
   category?: string;
 };
 
+interface RecommendationParsedBriefSource extends RecommendationBriefParserResult {
+  extractionSource?: RecommendationExtractionSource;
+  extractionConfidence?: number;
+  locationMode?: RecommendationLocationMode;
+  aiExtraction?: RecommendationAIExtractionDto;
+}
+
+interface RecommendationQueryParserDependencies {
+  aiQueryUnderstandingService?: Pick<
+    typeof aiQueryUnderstandingService,
+    "extractRecommendationQuery"
+  >;
+  categoryLoader?: () => Promise<CategoryLike[]>;
+}
+
 const omitUndefined = <T extends Record<string, unknown>>(value: T): T =>
   Object.fromEntries(
     Object.entries(value).filter(([, candidate]) => candidate !== undefined),
   ) as T;
 
 export class RecommendationQueryParserService {
+  private readonly aiQueryUnderstandingService: Pick<
+    typeof aiQueryUnderstandingService,
+    "extractRecommendationQuery"
+  >;
+  private readonly categoryLoader?: () => Promise<CategoryLike[]>;
+
+  constructor(dependencies: RecommendationQueryParserDependencies = {}) {
+    this.aiQueryUnderstandingService =
+      dependencies.aiQueryUnderstandingService ?? aiQueryUnderstandingService;
+    this.categoryLoader = dependencies.categoryLoader;
+  }
+
   private normalizeString(value?: string): string | undefined {
     const trimmed = value?.trim();
     return trimmed || undefined;
@@ -185,6 +227,9 @@ export class RecommendationQueryParserService {
   }
 
   private async loadCategories(): Promise<CategoryLike[]> {
+    if (this.categoryLoader) {
+      return this.categoryLoader();
+    }
     const categories = await Category.findAll({
       attributes: ["id", "name"],
       order: [["name", "ASC"]],
@@ -238,11 +283,336 @@ export class RecommendationQueryParserService {
     return omitUndefined(next) as T;
   }
 
+  private pushDetectedEntity(
+    entities: RecommendationDetectedEntityDto[],
+    entity: RecommendationDetectedEntityDto,
+  ) {
+    const exists = entities.some(
+      (current) =>
+        current.type === entity.type &&
+        current.raw === entity.raw &&
+        current.value === entity.value,
+    );
+
+    if (!exists) {
+      entities.push(entity);
+    }
+  }
+
+  private buildLocationMatchReason(mode: RecommendationLocationMode): string {
+    if (mode === "strict") {
+      return "AI detected a direct location filter from the query wording.";
+    }
+
+    if (mode === "nearby") {
+      return "AI detected a nearby or proximity-based location preference.";
+    }
+
+    return "AI detected a softer location preference from the free-text brief.";
+  }
+
+  private buildDetectedLocation(
+    profile: LocationSearchProfile,
+    raw: string,
+    mode: RecommendationLocationMode,
+    confidence?: number,
+  ): RecommendationDetectedLocationDto {
+    const normalizedConfidence =
+      confidence === undefined
+        ? undefined
+        : Math.max(0.45, Math.min(0.99, Math.round(confidence * 100) / 100));
+
+    return {
+      raw,
+      value: profile.value,
+      normalizedValue: profile.normalizedValue,
+      aliases: profile.aliases,
+      mode,
+      confidence: normalizedConfidence ?? (mode === "strict" ? 0.9 : 0.82),
+      matchReason: this.buildLocationMatchReason(mode),
+    };
+  }
+
+  private mapAIExtractionToParsedBrief(
+    brief: string,
+    extraction: AIRecommendationExtraction,
+  ): RecommendationParsedBriefSource {
+    const detectedEntities: RecommendationDetectedEntityDto[] = [];
+    const mapped: RecommendationParsedBriefSource = {
+      mustHave: {},
+      preferences: {},
+      detectedEntities,
+      detectedLocations: [],
+      warnings: [],
+      extractionSource: "ai",
+      extractionConfidence: extraction.confidence,
+      aiExtraction: extraction,
+    };
+
+    const categoryInput = this.normalizeString(extraction.category);
+    if (categoryInput) {
+      const parsedCategory = parseCategoryCandidate(categoryInput);
+      const categoryValue = parsedCategory?.canonical || categoryInput;
+      mapped.mustHave.category = categoryValue;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "category",
+        value: categoryValue,
+        raw: categoryInput,
+      });
+    }
+
+    const locationValue =
+      this.normalizeString(extraction.location?.value) ||
+      this.normalizeString(extraction.landmarkPreference);
+    const locationMode =
+      extraction.location?.mode || (locationValue ? "nearby" : undefined);
+
+    if (locationValue && locationMode) {
+      const locationProfile = buildLocationSearchProfile(locationValue);
+      if (locationProfile) {
+        const detectedLocation = this.buildDetectedLocation(
+          locationProfile,
+          locationValue,
+          locationMode,
+          extraction.location?.confidence ?? extraction.confidence,
+        );
+
+        mapped.detectedLocation = detectedLocation;
+        mapped.detectedLocations = [detectedLocation];
+        mapped.locationMode = detectedLocation.mode;
+
+        if (detectedLocation.mode === "strict") {
+          mapped.mustHave.location = detectedLocation.value;
+          mapped.preferences.location = detectedLocation.value;
+        } else {
+          mapped.preferences.location = detectedLocation.value;
+        }
+
+        this.pushDetectedEntity(detectedEntities, {
+          type: "location",
+          value: detectedLocation.value,
+          raw: locationValue,
+        });
+      }
+    }
+
+    if (extraction.maxPrice !== undefined) {
+      mapped.mustHave.maxPrice = extraction.maxPrice;
+      mapped.preferences.price = extraction.maxPrice;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "maxPrice",
+        value: extraction.maxPrice,
+        raw: String(extraction.maxPrice),
+      });
+    }
+
+    if (extraction.minPrice !== undefined) {
+      this.pushDetectedEntity(detectedEntities, {
+        type: "minPrice",
+        value: extraction.minPrice,
+        raw: String(extraction.minPrice),
+      });
+    }
+
+    if (extraction.bedrooms !== undefined) {
+      this.pushDetectedEntity(detectedEntities, {
+        type: "bedrooms",
+        value: extraction.bedrooms,
+        raw: String(extraction.bedrooms),
+      });
+    }
+
+    if (extraction.bathrooms !== undefined) {
+      this.pushDetectedEntity(detectedEntities, {
+        type: "bathrooms",
+        value: extraction.bathrooms,
+        raw: String(extraction.bathrooms),
+      });
+    }
+
+    if (extraction.parking !== undefined) {
+      this.pushDetectedEntity(detectedEntities, {
+        type: "parking",
+        value: extraction.parking,
+        raw: String(extraction.parking),
+      });
+    }
+
+    if (extraction.furnished !== undefined) {
+      this.pushDetectedEntity(detectedEntities, {
+        type: "furnished",
+        value: extraction.furnished,
+        raw: String(extraction.furnished),
+      });
+    }
+
+    if (extraction.minArea !== undefined) {
+      mapped.mustHave.minArea = extraction.minArea;
+      mapped.preferences.area = mapped.preferences.area ?? extraction.minArea;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "minArea",
+        value: extraction.minArea,
+        raw: String(extraction.minArea),
+      });
+    }
+
+    if (extraction.preferredArea !== undefined) {
+      mapped.preferences.area = extraction.preferredArea;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "preferredArea",
+        value: extraction.preferredArea,
+        raw: String(extraction.preferredArea),
+      });
+    }
+
+    if (extraction.minRoi !== undefined) {
+      mapped.mustHave.minRoi = extraction.minRoi;
+      mapped.preferences.roi = mapped.preferences.roi ?? extraction.minRoi;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "minRoi",
+        value: extraction.minRoi,
+        raw: String(extraction.minRoi),
+      });
+    }
+
+    if (extraction.preferredRoi !== undefined) {
+      mapped.preferences.roi = extraction.preferredRoi;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "preferredRoi",
+        value: extraction.preferredRoi,
+        raw: String(extraction.preferredRoi),
+      });
+    }
+
+    if (extraction.maxDistanceFromHighway !== undefined) {
+      mapped.mustHave.maxDistanceFromHighway =
+        extraction.maxDistanceFromHighway;
+      mapped.preferences.maxDistanceFromHighway =
+        extraction.maxDistanceFromHighway;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "maxDistanceFromHighway",
+        value: extraction.maxDistanceFromHighway,
+        raw: String(extraction.maxDistanceFromHighway),
+      });
+    }
+
+    const landmark = this.normalizeString(extraction.landmarkPreference);
+    if (landmark) {
+      this.pushDetectedEntity(detectedEntities, {
+        type: "landmark",
+        value: landmark,
+        raw: landmark,
+      });
+    }
+
+    const normalizedStatus = extraction.status
+      ? normalizePropertyStatus(extraction.status)
+      : undefined;
+    if (normalizedStatus) {
+      mapped.mustHave.status = normalizedStatus;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "status",
+        value: normalizedStatus,
+        raw: extraction.status!,
+      });
+    }
+
+    return mapped;
+  }
+
+  private mergeDetectedEntities(
+    primary: RecommendationDetectedEntityDto[],
+    secondary: RecommendationDetectedEntityDto[],
+  ): RecommendationDetectedEntityDto[] {
+    const merged: RecommendationDetectedEntityDto[] = [];
+
+    [...primary, ...secondary].forEach((entity) => {
+      this.pushDetectedEntity(merged, entity);
+    });
+
+    return merged;
+  }
+
+  private mergeParsedBriefs(
+    aiParsed: RecommendationParsedBriefSource,
+    fallbackParsed: RecommendationBriefParserResult,
+  ): RecommendationParsedBriefSource {
+    return {
+      mustHave: omitUndefined({
+        ...fallbackParsed.mustHave,
+        ...aiParsed.mustHave,
+      }),
+      preferences: omitUndefined({
+        ...fallbackParsed.preferences,
+        ...aiParsed.preferences,
+      }),
+      detectedEntities: this.mergeDetectedEntities(
+        aiParsed.detectedEntities,
+        fallbackParsed.detectedEntities,
+      ),
+      detectedLocation:
+        aiParsed.detectedLocation || fallbackParsed.detectedLocation,
+      detectedLocations:
+        aiParsed.detectedLocations.length > 0
+          ? aiParsed.detectedLocations
+          : fallbackParsed.detectedLocations,
+      warnings: [...aiParsed.warnings],
+      extractionSource: "ai",
+      extractionConfidence:
+        aiParsed.extractionConfidence ??
+        fallbackParsed.detectedLocation?.confidence,
+      locationMode:
+        aiParsed.locationMode ??
+        aiParsed.detectedLocation?.mode ??
+        fallbackParsed.detectedLocation?.mode,
+      aiExtraction: aiParsed.aiExtraction,
+    };
+  }
+
+  private async parseBriefWithAI(
+    brief?: string,
+  ): Promise<RecommendationParsedBriefSource | null> {
+    const normalizedBrief = this.normalizeString(brief);
+    if (!normalizedBrief) {
+      return null;
+    }
+
+    const aiResult =
+      await this.aiQueryUnderstandingService.extractRecommendationQuery(
+        normalizedBrief,
+      );
+
+    if (!aiResult) {
+      return null;
+    }
+
+    return this.mapAIExtractionToParsedBrief(
+      normalizedBrief,
+      aiResult.extraction,
+    );
+  }
+
+  private buildRuleBasedParsedBrief(
+    brief?: string,
+  ): RecommendationParsedBriefSource {
+    const parsedBrief = parseRecommendationBrief(brief);
+    return {
+      ...parsedBrief,
+      extractionSource: brief ? "rule_based_fallback" : undefined,
+      extractionConfidence: parsedBrief.detectedLocation?.confidence,
+      locationMode: parsedBrief.detectedLocation?.mode,
+    };
+  }
+
   async parse(
     input: RecommendationRequestDto,
   ): Promise<ParsedRecommendationQueryResult> {
     const brief = this.normalizeString(input.brief);
-    const parsedBrief = parseRecommendationBrief(brief);
+    const ruleBasedParsedBrief = this.buildRuleBasedParsedBrief(brief);
+    const aiParsedBrief = await this.parseBriefWithAI(brief);
+    const parsedBrief = aiParsedBrief
+      ? this.mergeParsedBriefs(aiParsedBrief, ruleBasedParsedBrief)
+      : ruleBasedParsedBrief;
     const manualMustHave = this.sanitizeMustHave(input.mustHave);
     const manualPreferences = this.sanitizePreferences(input.preferences);
 
@@ -287,9 +657,13 @@ export class RecommendationQueryParserService {
       preferences: appliedPreferences,
       parsedBrief: {
         brief,
+        extractionSource: parsedBrief.extractionSource,
+        extractionConfidence: parsedBrief.extractionConfidence,
+        locationMode: parsedBrief.locationMode,
         detectedEntities: parsedBrief.detectedEntities,
         detectedLocation: parsedBrief.detectedLocation,
         detectedLocations: parsedBrief.detectedLocations,
+        aiExtraction: parsedBrief.aiExtraction,
         parsedMustHave: this.sanitizeMustHave(parsedBrief.mustHave),
         parsedPreferences: this.sanitizePreferences(parsedBrief.preferences),
         appliedFilters,

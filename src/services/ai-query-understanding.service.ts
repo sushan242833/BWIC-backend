@@ -1,0 +1,332 @@
+import https from "https";
+import { appConfig } from "@config/app";
+import env from "@config/env";
+import {
+  aiRecommendationExtractionJsonSchema,
+  parseAIRecommendationExtraction,
+  type AIRecommendationExtraction,
+} from "@utils/ai/recommendation-ai-schema";
+
+interface ChatCompletionMessage {
+  role: "system" | "user";
+  content: string;
+}
+
+interface OpenAIChatCompletionRequest {
+  model: string;
+  messages: ChatCompletionMessage[];
+  temperature: number;
+  response_format: {
+    type: "json_schema";
+    json_schema: typeof aiRecommendationExtractionJsonSchema;
+  };
+}
+
+interface OpenAIChatCompletionResponse {
+  choices?: Array<{
+    finish_reason?: string | null;
+    message?: {
+      content?:
+        | string
+        | Array<{ type?: string; text?: string }>
+        | null;
+      refusal?: string | null;
+    };
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+  };
+}
+
+export interface AIQueryUnderstandingResult {
+  extraction: AIRecommendationExtraction;
+  source: "ai";
+}
+
+export interface AIQueryUnderstandingServiceOptions {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  timeoutMs?: number;
+  enabled?: boolean;
+  requestChatCompletion?: (
+    payload: OpenAIChatCompletionRequest,
+  ) => Promise<string | null>;
+}
+
+const SYSTEM_PROMPT = `
+You extract structured real-estate search intent for Nepal property recommendation queries.
+
+Return JSON only. Do not explain anything outside JSON.
+
+Rules:
+- Interpret Nepali real-estate language such as home, house, apartment, flat, land, plot, ghaderi, lakh, crore, Kathmandu, Lalitpur, Bhaktapur, Baneshwor, Kalanki, Koteshwor, Bafal, Gongabu, and landmarks like schools or hospitals.
+- Convert lakh/crore mentions into integer NPR values.
+- Use location.mode="strict" for direct location filters like "in kathmandu" or "at lalitpur".
+- Use location.mode="nearby" for softer proximity phrases like "near bafal", "around kalanki", "close to baneshwor", or landmark-style nearby references.
+- Use location.mode="soft" only when a location preference exists but the cue is weak.
+- If a field is not present or uncertain, return null for that field.
+- Do not invent facts. Only extract what is supported by the query.
+- "easy access to highway" or "near highway" should map to a small maxDistanceFromHighway when clearly implied.
+- Schools, hospitals, chowks, landmarks, and local areas are valid locations or landmark preferences. Do not reject them.
+`.trim();
+
+const buildUserPrompt = (brief: string) =>
+  `Extract structured intent from this Nepal real-estate recommendation query:\n${brief}`;
+
+const normalizeBaseUrl = (value: string): string =>
+  value.endsWith("/") ? value : `${value}/`;
+
+const toRequestUrl = (baseUrl: string): URL =>
+  new URL("chat/completions", normalizeBaseUrl(baseUrl));
+
+const readMessageContent = (
+  content:
+    | string
+    | Array<{ type?: string; text?: string }>
+    | null
+    | undefined,
+): string | null => {
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    return trimmed || null;
+  }
+
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const text = content
+    .map((part) => part.text?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join("");
+
+  return text || null;
+};
+
+const createChatCompletionRequester = (options: {
+  apiKey: string;
+  baseUrl: string;
+  timeoutMs: number;
+}) => {
+  const requestUrl = toRequestUrl(options.baseUrl);
+
+  return (payload: OpenAIChatCompletionRequest): Promise<string | null> =>
+    new Promise((resolve) => {
+      const body = JSON.stringify(payload);
+      const request = https.request(
+        requestUrl,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${options.apiKey}`,
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body),
+          },
+        },
+        (response) => {
+          let data = "";
+
+          response.on("data", (chunk) => {
+            data += chunk;
+          });
+
+          response.on("end", () => {
+            try {
+              const parsed = JSON.parse(data) as OpenAIChatCompletionResponse;
+
+              if (
+                !response.statusCode ||
+                response.statusCode < 200 ||
+                response.statusCode >= 300
+              ) {
+                const errorMessage =
+                  parsed.error?.message ||
+                  `OpenAI request failed with status ${response.statusCode}`;
+                console.warn(`[ai-query] ${errorMessage}`);
+                resolve(null);
+                return;
+              }
+
+              const choice = parsed.choices?.[0];
+              if (!choice) {
+                console.warn("[ai-query] OpenAI returned no choices");
+                resolve(null);
+                return;
+              }
+
+              if (choice.message?.refusal) {
+                console.warn(
+                  `[ai-query] Model refused extraction: ${choice.message.refusal}`,
+                );
+                resolve(null);
+                return;
+              }
+
+              if (choice.finish_reason === "length") {
+                console.warn(
+                  "[ai-query] OpenAI response was truncated before extraction completed",
+                );
+                resolve(null);
+                return;
+              }
+
+              resolve(readMessageContent(choice.message?.content));
+            } catch (error) {
+              console.warn(
+                `[ai-query] Failed to parse OpenAI response payload: ${
+                  error instanceof Error ? error.message : "Unknown error"
+                }`,
+              );
+              resolve(null);
+            }
+          });
+        },
+      );
+
+      request.setTimeout(options.timeoutMs, () => {
+        request.destroy();
+        console.warn(
+          `[ai-query] OpenAI extraction timed out after ${options.timeoutMs}ms`,
+        );
+        resolve(null);
+      });
+
+      request.on("error", (error) => {
+        console.warn(
+          `[ai-query] OpenAI extraction request failed: ${error.message}`,
+        );
+        resolve(null);
+      });
+
+      request.write(body);
+      request.end();
+    });
+};
+
+const hasStructuredOutput = (value: AIRecommendationExtraction): boolean =>
+  Boolean(
+    value.category ||
+      value.location?.value ||
+      value.maxPrice !== undefined ||
+      value.minPrice !== undefined ||
+      value.bedrooms !== undefined ||
+      value.bathrooms !== undefined ||
+      value.parking !== undefined ||
+      value.furnished !== undefined ||
+      value.minArea !== undefined ||
+      value.preferredArea !== undefined ||
+      value.minRoi !== undefined ||
+      value.preferredRoi !== undefined ||
+      value.maxDistanceFromHighway !== undefined ||
+      value.landmarkPreference ||
+      value.status,
+  );
+
+export class AIQueryUnderstandingService {
+  private readonly apiKey?: string;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+  private readonly enabled: boolean;
+  private readonly requestChatCompletion: (
+    payload: OpenAIChatCompletionRequest,
+  ) => Promise<string | null>;
+  private hasLoggedConfigurationFallback = false;
+
+  constructor(options: AIQueryUnderstandingServiceOptions = {}) {
+    this.apiKey = options.apiKey ?? env.ai.apiKey;
+    this.baseUrl = options.baseUrl ?? env.ai.baseUrl;
+    this.model = options.model ?? env.ai.model ?? appConfig.aiQuery.defaultModel;
+    this.timeoutMs = options.timeoutMs ?? env.ai.timeoutMs ?? appConfig.aiQuery.timeoutMs;
+    this.enabled = options.enabled ?? env.ai.enabled;
+    this.requestChatCompletion =
+      options.requestChatCompletion ??
+      (this.apiKey
+        ? createChatCompletionRequester({
+            apiKey: this.apiKey,
+            baseUrl: this.baseUrl,
+            timeoutMs: this.timeoutMs,
+          })
+        : async () => null);
+  }
+
+  private canUseAI(): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    if (this.apiKey) {
+      return true;
+    }
+
+    if (!this.hasLoggedConfigurationFallback) {
+      console.warn(
+        "[ai-query] OPENAI_API_KEY is not configured, so recommendation brief parsing will fall back to the rule-based parser.",
+      );
+      this.hasLoggedConfigurationFallback = true;
+    }
+
+    return false;
+  }
+
+  async extractRecommendationQuery(
+    brief?: string,
+  ): Promise<AIQueryUnderstandingResult | null> {
+    const normalizedBrief = brief?.trim().replace(/\s+/g, " ");
+    if (!normalizedBrief || !this.canUseAI()) {
+      return null;
+    }
+
+    try {
+      const content = await this.requestChatCompletion({
+        model: this.model,
+        temperature: appConfig.aiQuery.temperature,
+        response_format: {
+          type: "json_schema",
+          json_schema: aiRecommendationExtractionJsonSchema,
+        },
+        messages: [
+          {
+            role: "system",
+            content: SYSTEM_PROMPT,
+          },
+          {
+            role: "user",
+            content: buildUserPrompt(normalizedBrief),
+          },
+        ],
+      });
+
+      if (!content) {
+        return null;
+      }
+
+      const parsedContent = JSON.parse(content) as unknown;
+      const extraction = parseAIRecommendationExtraction(parsedContent);
+
+      if (!extraction || !hasStructuredOutput(extraction)) {
+        console.warn(
+          `[ai-query] AI extraction returned no valid structured intent for: "${normalizedBrief}"`,
+        );
+        return null;
+      }
+
+      return {
+        extraction,
+        source: "ai",
+      };
+    } catch (error) {
+      console.warn(
+        `[ai-query] AI extraction failed for "${normalizedBrief}": ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
+      return null;
+    }
+  }
+}
+
+export default new AIQueryUnderstandingService();

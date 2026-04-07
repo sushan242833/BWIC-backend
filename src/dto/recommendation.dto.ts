@@ -27,22 +27,29 @@ export interface RecommendationPreferencesDto {
 }
 
 export type RecommendationLocationMode = "strict" | "nearby" | "soft";
+export type RecommendationExtractionSource = "ai" | "rule_based_fallback";
 
 export type RecommendationDetectedEntityType =
   | "category"
   | "location"
   | "maxPrice"
+  | "minPrice"
   | "preferredPrice"
+  | "bedrooms"
+  | "bathrooms"
+  | "parking"
+  | "furnished"
   | "minRoi"
   | "preferredRoi"
   | "minArea"
   | "preferredArea"
   | "maxDistanceFromHighway"
+  | "landmark"
   | "status";
 
 export interface RecommendationDetectedEntityDto {
   type: RecommendationDetectedEntityType;
-  value: string | number;
+  value: string | number | boolean;
   raw: string;
 }
 
@@ -56,11 +63,38 @@ export interface RecommendationDetectedLocationDto {
   matchReason: string;
 }
 
+export interface RecommendationAIExtractionDto {
+  category?: string;
+  location?: {
+    value?: string;
+    mode?: RecommendationLocationMode;
+    confidence?: number;
+  };
+  maxPrice?: number;
+  minPrice?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  parking?: boolean;
+  furnished?: boolean;
+  minArea?: number;
+  preferredArea?: number;
+  minRoi?: number;
+  preferredRoi?: number;
+  maxDistanceFromHighway?: number;
+  landmarkPreference?: string;
+  status?: string;
+  confidence?: number;
+}
+
 export interface RecommendationParsedBriefMetadataDto {
   brief?: string;
+  extractionSource?: RecommendationExtractionSource;
+  extractionConfidence?: number;
+  locationMode?: RecommendationLocationMode;
   detectedEntities: RecommendationDetectedEntityDto[];
   detectedLocation?: RecommendationDetectedLocationDto;
   detectedLocations?: RecommendationDetectedLocationDto[];
+  aiExtraction?: RecommendationAIExtractionDto;
   parsedMustHave: RecommendationMustHaveDto;
   parsedPreferences: RecommendationPreferencesDto;
   appliedFilters: RecommendationMustHaveDto;

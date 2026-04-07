@@ -23,6 +23,9 @@ export class Category extends Model<
   CategoryAttributes,
   CategoryCreationAttributes
 > {
+  static findAll(arg0: { attributes: string[]; order: string[][] }) {
+    throw new Error("Method not implemented.");
+  }
   @PrimaryKey
   @AutoIncrement
   @Column
