@@ -72,3 +72,16 @@ test("builds recommendation location filters across multiple searchable fields",
   assert.ok(Array.isArray(orConditions));
   assert.ok(orConditions.length >= 3);
 });
+
+test("converts recommendation highway distance filters from kilometers to meters", () => {
+  const where = buildRecommendationPropertyWhere({
+    maxDistanceFromHighway: 0.5,
+  });
+
+  assert.deepEqual(
+    (where as Record<string, Record<symbol, number>>).distanceFromHighway,
+    {
+      [Op.lte]: 500,
+    },
+  );
+});

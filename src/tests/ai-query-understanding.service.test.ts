@@ -45,6 +45,46 @@ test("returns validated AI extraction for a structured Nepal property brief", as
   assert.equal(result?.extraction.maxDistanceFromHighway, 1);
 });
 
+test("accepts multilingual briefs and returns normalized Latin-script extraction", async () => {
+  const service = new AIQueryUnderstandingService({
+    enabled: true,
+    apiKey: "test-key",
+    requestChatCompletion: async () =>
+      JSON.stringify({
+        category: "home",
+        location: {
+          value: "Kathmandu",
+          mode: "strict",
+          confidence: 0.9,
+        },
+        maxPrice: 20000000,
+        minPrice: null,
+        bedrooms: null,
+        bathrooms: null,
+        parking: null,
+        furnished: null,
+        minArea: null,
+        preferredArea: null,
+        minRoi: null,
+        preferredRoi: null,
+        maxDistanceFromHighway: null,
+        landmarkPreference: null,
+        status: null,
+        confidence: 0.93,
+      }),
+  });
+
+  const result = await service.extractRecommendationQuery(
+    "काठमाडौंमा २ करोडभित्र घर चाहियो",
+  );
+
+  assert.equal(result?.source, "ai");
+  assert.equal(result?.extraction.category, "home");
+  assert.equal(result?.extraction.location?.value, "Kathmandu");
+  assert.equal(result?.extraction.location?.mode, "strict");
+  assert.equal(result?.extraction.maxPrice, 20000000);
+});
+
 test("sends Nepal land-unit and NPR conversion rules to the AI model", async () => {
   let capturedSystemPrompt = "";
 
@@ -194,6 +234,74 @@ test("sends generalized Nepal location-understanding rules to the AI model", asy
   assert.match(
     capturedSystemPrompt,
     /keep only the actual place or landmark phrase and remove cue words like in, at, near, nearby, around, or close to/i,
+  );
+});
+
+test("sends multilingual and Latin-script normalization rules to the AI model", async () => {
+  let capturedSystemPrompt = "";
+  let capturedUserPrompt = "";
+
+  const service = new AIQueryUnderstandingService({
+    enabled: true,
+    apiKey: "test-key",
+    requestChatCompletion: async (payload) => {
+      capturedSystemPrompt =
+        payload.messages.find((message) => message.role === "system")?.content ||
+        "";
+      capturedUserPrompt =
+        payload.messages.find((message) => message.role === "user")?.content ||
+        "";
+
+      return JSON.stringify({
+        category: "home",
+        location: {
+          value: "Kathmandu",
+          mode: "strict",
+          confidence: 0.9,
+        },
+        maxPrice: 20000000,
+        minPrice: null,
+        bedrooms: null,
+        bathrooms: null,
+        parking: null,
+        furnished: null,
+        minArea: null,
+        preferredArea: null,
+        minRoi: null,
+        preferredRoi: null,
+        maxDistanceFromHighway: null,
+        landmarkPreference: null,
+        status: null,
+        confidence: 0.92,
+      });
+    },
+  });
+
+  const result = await service.extractRecommendationQuery(
+    "加德满都で2 crore以下の家",
+  );
+
+  assert.equal(result?.extraction.category, "home");
+  assert.equal(result?.extraction.location?.value, "Kathmandu");
+  assert.match(
+    capturedSystemPrompt,
+    /Nepali, English, Hindi, Hinglish, Chinese, Japanese, or any other language/i,
+  );
+  assert.match(
+    capturedSystemPrompt,
+    /return all string fields in English or common Romanized Nepal place names using Latin characters/i,
+  );
+  assert.match(
+    capturedSystemPrompt,
+    /return "Kathmandu" instead of "काठमाडौं"/i,
+  );
+  assert.match(
+    capturedSystemPrompt,
+    /Arabic digits, Devanagari digits, and language-specific number words/i,
+  );
+  assert.match(
+    capturedUserPrompt,
+    /The query may be written in any language or mixed languages/i,
   );
 });
 

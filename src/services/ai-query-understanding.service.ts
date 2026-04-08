@@ -60,6 +60,11 @@ Return JSON only. Do not explain anything outside JSON.
 
 Rules:
 - Interpret Nepali real-estate language such as home, house, apartment, flat, land, plot, ghaderi, lakh, crore, Kathmandu, Lalitpur, Bhaktapur, Baneshwor, Kalanki, Koteshwor, Bafal, Gongabu, and landmarks like schools or hospitals.
+- The user may write in Nepali, English, Hindi, Hinglish, Chinese, Japanese, or any other language, including mixed-language or mixed-script text.
+- Understand non-Latin scripts and translate mentally before extraction.
+- Return all string fields in English or common Romanized Nepal place names using Latin characters so downstream filters can use them consistently.
+- Normalize translated or transliterated equivalents to the same intent. For example, return "Kathmandu" instead of "काठमाडौं", return "home" instead of "घर", and prefer Latin-script Nepal place names over non-Latin output.
+- Understand numbers written in Arabic digits, Devanagari digits, and language-specific number words when the meaning is clear.
 - The place names above are examples only, not a fixed list. Do not limit extraction to predefined locations.
 - Understand arbitrary Nepal locations and anchors such as municipalities, wards, toles, chowks, bazaars, bus parks, ring road areas, roads, gates, temples, schools, colleges, hospitals, offices, bridges, and other landmarks when the query supports them.
 - Handle spelling variations, transliteration differences, abbreviations, and minor typos without requiring an exact hardcoded match.
@@ -88,7 +93,7 @@ Rules:
 `.trim();
 
 const buildUserPrompt = (brief: string) =>
-  `Extract structured intent from this Nepal real-estate recommendation query:\n${brief}`;
+  `The query may be written in any language or mixed languages. Extract structured intent from this Nepal real-estate recommendation query:\n${brief}`;
 
 const normalizeBaseUrl = (value: string): string =>
   value.endsWith("/") ? value : `${value}/`;

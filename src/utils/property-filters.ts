@@ -145,6 +145,10 @@ export const buildRecommendationPropertyWhere = (
 ): WhereOptions => {
   const baseWhere = buildPropertyWhere({
     ...filters,
+    maxDistanceFromHighway:
+      filters.maxDistanceFromHighway !== undefined
+        ? Math.round(filters.maxDistanceFromHighway * 1000)
+        : undefined,
     search: undefined,
     location: undefined,
   });

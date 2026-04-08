@@ -10,6 +10,7 @@ import { Property } from "@models/properties.model";
 import recommendationQueryParserService from "@services/recommendation-query-parser.service";
 import type { PaginationMeta } from "@utils/api-response";
 import { geocodeLocation } from "@utils/geocoding";
+import { buildRecommendationPropertyWhere } from "@utils/property-filters";
 import { serializePropertySummary } from "@utils/property-serializers";
 import {
   RecommendationPreferences,
@@ -155,6 +156,20 @@ export class RecommendationService {
     };
   }
 
+  private buildCandidateWhere(
+    mustHave: RecommendationRequestDto["mustHave"],
+  ) {
+    return buildRecommendationPropertyWhere({
+      categoryId: mustHave?.categoryId,
+      location: mustHave?.location,
+      maxPrice: mustHave?.maxPrice,
+      minRoi: mustHave?.minRoi,
+      minArea: mustHave?.minArea,
+      maxDistanceFromHighway: mustHave?.maxDistanceFromHighway,
+      status: mustHave?.status,
+    });
+  }
+
   buildRequestFromQuery(
     query: Record<string, unknown>,
   ): RecommendationRequestDto {
@@ -249,14 +264,7 @@ export class RecommendationService {
       parsedQuery.mustHave,
     );
     const hasScoringPreferences = this.hasScoringPreferences(preferences);
-    const candidateWhere = {
-      ...(parsedQuery.mustHave?.categoryId !== undefined
-        ? { categoryId: parsedQuery.mustHave.categoryId }
-        : {}),
-      ...(parsedQuery.mustHave?.status
-        ? { status: parsedQuery.mustHave.status }
-        : {}),
-    };
+    const candidateWhere = this.buildCandidateWhere(parsedQuery.mustHave);
 
     const candidates = await Property.findAll({
       where: candidateWhere,
