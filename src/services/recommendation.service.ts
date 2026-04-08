@@ -31,8 +31,24 @@ interface RecommendationVisibilityOptions {
 
 export const filterVisibleRecommendations = (
   items: RecommendationResultDto[],
-  _options: RecommendationVisibilityOptions,
-): RecommendationResultDto[] => items;
+  options: RecommendationVisibilityOptions,
+): RecommendationResultDto[] => {
+  let visibleItems = items;
+
+  if (options.hasLocationPreference) {
+    visibleItems = visibleItems.filter(
+      (item) => (item.scoreBreakdown?.location ?? 0) > 0,
+    );
+  }
+
+  if (!options.hasScoringPreferences) {
+    return visibleItems;
+  }
+
+  return visibleItems.filter(
+    (item) => item.matchPercentage >= options.minimumMatchPercentage,
+  );
+};
 
 export class RecommendationService {
   private readonly topRecommendationLimit =

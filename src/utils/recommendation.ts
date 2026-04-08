@@ -55,12 +55,28 @@ const parseMetric = (value: number | null | undefined) =>
   value === null || value === undefined || Number.isNaN(value)
     ? undefined
     : value;
+const parsePropertyHighwayDistanceKm = (value: number | null | undefined) => {
+  const distanceMeters = parseMetric(value);
+  return distanceMeters === undefined ? undefined : distanceMeters / 1000;
+};
 
 const roundScore = (value: number) => round2(Math.max(0, value));
 
 const safeRatioScore = (weight: number, deltaRatio: number): number => {
   const score = weight * Math.max(0, 1 - deltaRatio);
   return round2(score);
+};
+
+const scoreWithTolerance = (
+  weight: number,
+  deltaRatio: number,
+  toleranceRatio: number,
+): number => {
+  if (deltaRatio <= toleranceRatio) {
+    return weight;
+  }
+
+  return safeRatioScore(weight, deltaRatio - toleranceRatio);
 };
 
 const toPercentOfWeight = (points: number, weight: number) =>
@@ -305,29 +321,52 @@ export const scoreProperty = (
 
     if (price !== undefined) {
       if (hasPreferredPrice) {
-        if (price <= preferences.price!) {
+        const priceDeltaRatio =
+          Math.abs(price - preferences.price!) / preferences.price!;
+
+        if (priceDeltaRatio <= CLOSE_PRICE_DELTA_RATIO) {
           points = WEIGHTS.price;
-          reason = "Within your preferred price";
+          reason = "Within 2.5% of your preferred price";
           sentiment = "positive";
-        } else {
-          points = safeRatioScore(
+        } else if (price > preferences.price!) {
+          points = scoreWithTolerance(
             WEIGHTS.price,
-            (price - preferences.price!) / preferences.price!,
+            priceDeltaRatio,
+            CLOSE_PRICE_DELTA_RATIO,
           );
-          reason = "Above your preferred price";
+          reason = "Above your preferred price range";
+          sentiment = points > 0 ? "neutral" : "negative";
+        } else {
+          points = scoreWithTolerance(
+            WEIGHTS.price,
+            priceDeltaRatio,
+            CLOSE_PRICE_DELTA_RATIO,
+          );
+          reason = "Below your preferred price range";
           sentiment = points > 0 ? "neutral" : "negative";
         }
       } else if (priceCeiling !== undefined) {
-        if (price <= priceCeiling) {
+        const priceDeltaRatio = Math.abs(price - priceCeiling) / priceCeiling;
+
+        if (priceDeltaRatio <= CLOSE_PRICE_DELTA_RATIO) {
           points = WEIGHTS.price;
-          reason = "Within your maximum budget";
+          reason = "Within 2.5% of your budget target";
           sentiment = "positive";
-        } else {
-          points = safeRatioScore(
+        } else if (price > priceCeiling) {
+          points = scoreWithTolerance(
             WEIGHTS.price,
-            (price - priceCeiling) / priceCeiling,
+            priceDeltaRatio,
+            CLOSE_PRICE_DELTA_RATIO,
           );
-          reason = "Above your maximum budget";
+          reason = "Above your budget target";
+          sentiment = points > 0 ? "neutral" : "negative";
+        } else {
+          points = scoreWithTolerance(
+            WEIGHTS.price,
+            priceDeltaRatio,
+            CLOSE_PRICE_DELTA_RATIO,
+          );
+          reason = "Below your budget target";
           sentiment = points > 0 ? "neutral" : "negative";
         }
       } else {
@@ -342,12 +381,6 @@ export const scoreProperty = (
         penalties,
         "Price data is missing, so price fit could not be confirmed",
       );
-    } else if (priceCeiling !== undefined) {
-      if (price <= priceCeiling) {
-        pushUnique(topReasons, reason);
-      } else {
-        pushUnique(penalties, reason);
-      }
     } else if (
       toPercentOfWeight(points, WEIGHTS.price) >= STRONG_MATCH_THRESHOLD_PERCENT
     ) {
@@ -445,10 +478,12 @@ export const scoreProperty = (
     preferences.maxDistanceFromHighway > 0
   ) {
     maxPossible += WEIGHTS.distance;
-    const distance = property.distanceFromHighway;
+    const distance = parsePropertyHighwayDistanceKm(
+      property.distanceFromHighway,
+    );
     let points = 0;
 
-    if (distance !== null && distance !== undefined) {
+    if (distance !== undefined) {
       if (distance <= preferences.maxDistanceFromHighway) {
         points = WEIGHTS.distance;
       } else {
@@ -465,7 +500,7 @@ export const scoreProperty = (
       "Distance from highway data missing, so access preference could not be scored";
     let sentiment: RecommendationExplanationDto["sentiment"] = "neutral";
 
-    if (distance !== null && distance !== undefined) {
+    if (distance !== undefined) {
       if (distance <= preferences.maxDistanceFromHighway) {
         reason = "Within your preferred distance from the highway";
         sentiment = "positive";
@@ -476,7 +511,7 @@ export const scoreProperty = (
     }
 
     explanation.push(createExplanation("distance", reason, points, sentiment));
-    if (distance === null || distance === undefined) {
+    if (distance === undefined) {
       pushUnique(
         penalties,
         "Distance from highway data is missing, so accessibility fit could not be confirmed",

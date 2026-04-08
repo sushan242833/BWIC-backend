@@ -5,7 +5,7 @@ export const recommendationConfig = {
   maxPageSize: 20,
   defaultLocationRadiusKm: 3,
   strongMatchThresholdPercent: 60,
-  closePriceDeltaRatio: 0.1,
+  closePriceDeltaRatio: 0.025,
   closeAreaDeltaRatio: 0.15,
   earthRadiusKm: 6371,
   scoreWeights: {

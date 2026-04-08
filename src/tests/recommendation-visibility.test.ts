@@ -29,11 +29,14 @@ const createResult = (
   ...overrides,
 });
 
-test("keeps zero-score recommendations so ranking stays non-filtering", () => {
+test("filters out recommendations below the minimum match threshold when scoring preferences are active", () => {
   const visible = filterVisibleRecommendations(
     [
       createResult({ matchPercentage: 0, score: 0 }),
-      createResult({ property: { ...createResult({}).property, id: 2 }, matchPercentage: 42 }),
+      createResult({
+        property: { ...createResult({}).property, id: 2 },
+        matchPercentage: 42,
+      }),
     ],
     {
       hasLocationPreference: false,
@@ -42,16 +45,18 @@ test("keeps zero-score recommendations so ranking stays non-filtering", () => {
     },
   );
 
-  assert.equal(visible.length, 2);
-  assert.equal(visible[0]?.matchPercentage, 0);
-  assert.equal(visible[1]?.matchPercentage, 42);
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0]?.matchPercentage, 42);
 });
 
-test("keeps low-score recommendations even when scoring preferences are active", () => {
+test("keeps low-score recommendations when no scoring preferences are active", () => {
   const visible = filterVisibleRecommendations(
     [
       createResult({ matchPercentage: 0, score: 0 }),
-      createResult({ property: { ...createResult({}).property, id: 3 }, matchPercentage: 12 }),
+      createResult({
+        property: { ...createResult({}).property, id: 3 },
+        matchPercentage: 12,
+      }),
     ],
     {
       hasLocationPreference: false,
@@ -63,4 +68,28 @@ test("keeps low-score recommendations even when scoring preferences are active",
   assert.equal(visible.length, 2);
   assert.equal(visible[0]?.matchPercentage, 0);
   assert.equal(visible[1]?.matchPercentage, 12);
+});
+
+test("filters out recommendations with zero location score when location preference is active", () => {
+  const visible = filterVisibleRecommendations(
+    [
+      createResult({
+        matchPercentage: 78,
+        scoreBreakdown: { location: 0, price: 30 },
+      }),
+      createResult({
+        property: { ...createResult({}).property, id: 4 },
+        matchPercentage: 62,
+        scoreBreakdown: { location: 21, price: 20 },
+      }),
+    ],
+    {
+      hasLocationPreference: true,
+      hasScoringPreferences: true,
+      minimumMatchPercentage: 30,
+    },
+  );
+
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0]?.property.id, 4);
 });

@@ -17,7 +17,7 @@ test("gives full price points to properties within a maximum budget", () => {
   const scored = scoreProperty(
     {
       ...baseProperty,
-      price: 9500000,
+      price: 9800000,
     },
     {
       priceCeiling: 10000000,
@@ -27,7 +27,7 @@ test("gives full price points to properties within a maximum budget", () => {
   assert.equal(scored.scoreBreakdown?.price, 35);
   assert.match(
     scored.explanation.find((item) => item.category === "price")?.reason || "",
-    /within your maximum budget/i,
+    /within 2\.5% of your budget target/i,
   );
 });
 
@@ -35,7 +35,7 @@ test("gives full price points to properties at or below the preferred price", ()
   const scored = scoreProperty(
     {
       ...baseProperty,
-      price: 9500000,
+      price: 9800000,
     },
     {
       price: 10000000,
@@ -45,11 +45,11 @@ test("gives full price points to properties at or below the preferred price", ()
   assert.equal(scored.scoreBreakdown?.price, 35);
   assert.match(
     scored.explanation.find((item) => item.category === "price")?.reason || "",
-    /within your preferred price/i,
+    /within 2\.5% of your preferred price/i,
   );
 });
 
-test("reduces price points only when the property is above the preferred price", () => {
+test("reduces price points when the property is more than 2.5% above the preferred price", () => {
   const scored = scoreProperty(
     {
       ...baseProperty,
@@ -60,9 +60,27 @@ test("reduces price points only when the property is above the preferred price",
     },
   );
 
-  assert.equal(scored.scoreBreakdown?.price, 28);
+  assert.equal(scored.scoreBreakdown?.price, 28.88);
   assert.match(
     scored.explanation.find((item) => item.category === "price")?.reason || "",
-    /above your preferred price/i,
+    /above your preferred price range/i,
+  );
+});
+
+test("reduces price points when the property is far below the budget target", () => {
+  const scored = scoreProperty(
+    {
+      ...baseProperty,
+      price: 4500000,
+    },
+    {
+      priceCeiling: 10000000,
+    },
+  );
+
+  assert.equal(scored.scoreBreakdown?.price, 16.63);
+  assert.match(
+    scored.explanation.find((item) => item.category === "price")?.reason || "",
+    /below your budget target/i,
   );
 });

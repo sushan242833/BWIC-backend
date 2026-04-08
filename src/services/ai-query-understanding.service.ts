@@ -75,7 +75,7 @@ Rules:
 - If a field is not present or uncertain, return null for that field.
 - Do not invent facts. Only extract what is supported by the query.
 - Use preferredRoi for qualitative ROI hints without an explicit number.
-- Map "good roi", "high roi", or "strong roi" to preferredRoi=10.
+- Map "good roi", "high roi", or "strong roi" to preferredRoi=12.
 - Map "very high roi" to preferredRoi=15.
 - Map "easy access to highway", "near highway", "close to highway", or similar phrases without an explicit distance to maxDistanceFromHighway=1.
 - Schools, hospitals, chowks, landmarks, and local areas are valid locations or landmark preferences except for around 200 m from highway as we have that for distance from highway. Do not reject them.
