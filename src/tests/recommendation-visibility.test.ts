@@ -49,7 +49,7 @@ test("filters out recommendations below the minimum match threshold when scoring
   assert.equal(visible[0]?.matchPercentage, 42);
 });
 
-test("keeps low-score recommendations when no scoring preferences are active", () => {
+test("removes 0% recommendations even when no scoring preferences are active", () => {
   const visible = filterVisibleRecommendations(
     [
       createResult({ matchPercentage: 0, score: 0 }),
@@ -65,9 +65,9 @@ test("keeps low-score recommendations when no scoring preferences are active", (
     },
   );
 
-  assert.equal(visible.length, 2);
-  assert.equal(visible[0]?.matchPercentage, 0);
-  assert.equal(visible[1]?.matchPercentage, 12);
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0]?.matchPercentage, 12);
+  assert.equal(visible[0]?.property.id, 3);
 });
 
 test("filters out recommendations with zero location score when location preference is active", () => {

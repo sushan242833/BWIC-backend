@@ -139,6 +139,64 @@ test("sends qualitative ROI and highway mapping rules to the AI model", async ()
   );
 });
 
+test("sends generalized Nepal location-understanding rules to the AI model", async () => {
+  let capturedSystemPrompt = "";
+
+  const service = new AIQueryUnderstandingService({
+    enabled: true,
+    apiKey: "test-key",
+    requestChatCompletion: async (payload) => {
+      capturedSystemPrompt =
+        payload.messages.find((message) => message.role === "system")?.content ||
+        "";
+
+      return JSON.stringify({
+        category: null,
+        location: {
+          value: "Grande International Hospital",
+          mode: "nearby",
+          confidence: 0.89,
+        },
+        maxPrice: null,
+        minPrice: null,
+        bedrooms: null,
+        bathrooms: null,
+        parking: null,
+        furnished: null,
+        minArea: null,
+        preferredArea: null,
+        minRoi: null,
+        preferredRoi: null,
+        maxDistanceFromHighway: null,
+        landmarkPreference: null,
+        status: null,
+        confidence: 0.92,
+      });
+    },
+  });
+
+  const result = await service.extractRecommendationQuery(
+    "flat close to grande international hospital",
+  );
+
+  assert.equal(result?.extraction.location?.value, "Grande International Hospital");
+  assert.equal(result?.extraction.location?.mode, "nearby");
+  assert.match(capturedSystemPrompt, /examples only, not a fixed list/i);
+  assert.match(capturedSystemPrompt, /do not limit extraction to predefined locations/i);
+  assert.match(
+    capturedSystemPrompt,
+    /municipalities, wards, toles, chowks, bazaars, bus parks, ring road areas/i,
+  );
+  assert.match(
+    capturedSystemPrompt,
+    /spelling variations, transliteration differences, abbreviations, and minor typos/i,
+  );
+  assert.match(
+    capturedSystemPrompt,
+    /keep only the actual place or landmark phrase and remove cue words like in, at, near, nearby, around, or close to/i,
+  );
+});
+
 test("fails safely when the AI response is invalid JSON", async () => {
   const service = new AIQueryUnderstandingService({
     enabled: true,

@@ -21,7 +21,6 @@ import {
   buildLocationSearchProfile,
   type LocationSearchProfile,
 } from "@utils/nlp/location-parser";
-import { parseRecommendationBrief } from "@utils/nlp/recommendation-brief-parser";
 import type { AIRecommendationExtraction } from "@utils/ai/recommendation-ai-schema";
 
 export interface ParsedRecommendationQueryResult {
@@ -486,7 +485,8 @@ export class RecommendationQueryParserService {
     }
 
     if (extraction.maxDistanceFromHighway !== undefined) {
-      mapped.mustHave.maxDistanceFromHighway = extraction.maxDistanceFromHighway;
+      mapped.mustHave.maxDistanceFromHighway =
+        extraction.maxDistanceFromHighway;
       mapped.preferences.maxDistanceFromHighway =
         extraction.maxDistanceFromHighway;
       this.pushDetectedEntity(detectedEntities, {
@@ -540,28 +540,6 @@ export class RecommendationQueryParserService {
     return this.mapAIExtractionToParsedBrief(aiResult.extraction);
   }
 
-  private parseBriefWithFallback(
-    brief?: string,
-  ): RecommendationParsedBriefSource | null {
-    const normalizedBrief = this.normalizeString(brief);
-    if (!normalizedBrief) {
-      return null;
-    }
-
-    const fallbackResult = parseRecommendationBrief(normalizedBrief);
-
-    return {
-      mustHave: fallbackResult.mustHave,
-      preferences: fallbackResult.preferences,
-      detectedEntities: fallbackResult.detectedEntities,
-      detectedLocation: fallbackResult.detectedLocation,
-      detectedLocations: fallbackResult.detectedLocations,
-      warnings: fallbackResult.warnings,
-      extractionSource: "rule_based_fallback",
-      locationMode: fallbackResult.detectedLocation?.mode,
-    };
-  }
-
   private buildEmptyParsedBrief(
     brief?: string,
   ): RecommendationParsedBriefSource {
@@ -573,7 +551,7 @@ export class RecommendationQueryParserService {
       detectedLocations: [],
       warnings: normalizedBrief
         ? [
-            "Free-text brief was ignored because AI extraction did not return a usable result.",
+            "Free-text brief was ignored because AI extraction did not return a usable result. Use the structured recommendation filters instead.",
           ]
         : [],
     };
@@ -584,13 +562,7 @@ export class RecommendationQueryParserService {
   ): Promise<ParsedRecommendationQueryResult> {
     const brief = this.normalizeString(input.brief);
     const aiParsedBrief = await this.parseBriefWithAI(brief);
-    const fallbackParsedBrief = aiParsedBrief
-      ? null
-      : this.parseBriefWithFallback(brief);
-    const parsedBrief =
-      aiParsedBrief ??
-      fallbackParsedBrief ??
-      this.buildEmptyParsedBrief(brief);
+    const parsedBrief = aiParsedBrief ?? this.buildEmptyParsedBrief(brief);
     const manualMustHave = this.sanitizeMustHave(input.mustHave);
     const manualPreferences = this.sanitizePreferences(input.preferences);
 

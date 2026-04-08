@@ -33,7 +33,7 @@ export const filterVisibleRecommendations = (
   items: RecommendationResultDto[],
   options: RecommendationVisibilityOptions,
 ): RecommendationResultDto[] => {
-  let visibleItems = items;
+  let visibleItems = items.filter((item) => item.matchPercentage > 0);
 
   if (options.hasLocationPreference) {
     visibleItems = visibleItems.filter(

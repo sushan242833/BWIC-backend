@@ -27,7 +27,7 @@ export interface RecommendationPreferencesDto {
 }
 
 export type RecommendationLocationMode = "strict" | "nearby" | "soft";
-export type RecommendationExtractionSource = "ai" | "rule_based_fallback";
+export type RecommendationExtractionSource = "ai";
 
 export type RecommendationDetectedEntityType =
   | "category"

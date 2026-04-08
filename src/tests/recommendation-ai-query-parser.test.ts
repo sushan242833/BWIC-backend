@@ -51,7 +51,7 @@ test("maps AI extraction into the existing recommendation request contract", asy
   );
 });
 
-test("falls back to the rule-based brief parser when AI extraction is unavailable", async () => {
+test("ignores the free-text brief when AI extraction is unavailable and keeps structured filters", async () => {
   const parser = new RecommendationQueryParserService({
     aiQueryUnderstandingService: {
       extractRecommendationQuery: async () => null,
@@ -61,16 +61,25 @@ test("falls back to the rule-based brief parser when AI extraction is unavailabl
 
   const result = await parser.parse({
     brief: "land around kalanki",
+    mustHave: {
+      category: "Land",
+    },
+    preferences: {
+      location: "Kalanki",
+    },
   });
 
   assert.equal(result.mustHave.category, "Land");
   assert.equal(result.mustHave.categoryId, 2);
   assert.equal(result.mustHave.location, undefined);
   assert.equal(result.preferences.location, "Kalanki");
-  assert.equal(result.parsedBrief.extractionSource, "rule_based_fallback");
-  assert.equal(result.parsedBrief.locationMode, "nearby");
+  assert.equal(result.parsedBrief.extractionSource, undefined);
+  assert.equal(result.parsedBrief.locationMode, undefined);
+  assert.deepEqual(result.parsedBrief.detectedEntities, []);
   assert.equal(result.parsedBrief.aiExtraction, undefined);
-  assert.deepEqual(result.parsedBrief.warnings, []);
+  assert.deepEqual(result.parsedBrief.warnings, [
+    "Free-text brief was ignored because AI extraction did not return a usable result. Use the structured recommendation filters instead.",
+  ]);
 });
 
 test("uses the AI area value directly in the recommendation contract", async () => {
@@ -135,4 +144,35 @@ test("uses AI qualitative ROI and highway extraction directly in the recommendat
   assert.equal(result.preferences.maxDistanceFromHighway, 1);
   assert.equal(result.parsedBrief.aiExtraction?.preferredRoi, 12);
   assert.equal(result.parsedBrief.aiExtraction?.maxDistanceFromHighway, 1);
+});
+
+test("keeps AI soft landmark locations as preferences without forcing a strict filter", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => ({
+        source: "ai",
+        extraction: {
+          location: {
+            value: "Grande International Hospital",
+            mode: "soft",
+            confidence: 0.84,
+          },
+          confidence: 0.9,
+        },
+      }),
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    brief: "flat somewhere close to grande international hospital",
+  });
+
+  assert.equal(result.mustHave.location, undefined);
+  assert.equal(result.preferences.location, "Grande International Hospital");
+  assert.equal(result.parsedBrief.locationMode, "soft");
+  assert.equal(
+    result.parsedBrief.detectedLocation?.value,
+    "Grande International Hospital",
+  );
 });

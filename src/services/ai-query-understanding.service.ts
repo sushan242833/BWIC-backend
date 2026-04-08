@@ -60,6 +60,12 @@ Return JSON only. Do not explain anything outside JSON.
 
 Rules:
 - Interpret Nepali real-estate language such as home, house, apartment, flat, land, plot, ghaderi, lakh, crore, Kathmandu, Lalitpur, Bhaktapur, Baneshwor, Kalanki, Koteshwor, Bafal, Gongabu, and landmarks like schools or hospitals.
+- The place names above are examples only, not a fixed list. Do not limit extraction to predefined locations.
+- Understand arbitrary Nepal locations and anchors such as municipalities, wards, toles, chowks, bazaars, bus parks, ring road areas, roads, gates, temples, schools, colleges, hospitals, offices, bridges, and other landmarks when the query supports them.
+- Handle spelling variations, transliteration differences, abbreviations, and minor typos without requiring an exact hardcoded match.
+- When returning location.value, keep only the actual place or landmark phrase and remove cue words like in, at, near, nearby, around, or close to, along with unrelated budget or property-type words.
+- Prefer the most specific supported place or landmark phrase from the query instead of a broader city if both are mentioned.
+- Do not reject a location just because it is uncommon, unseen, or phrased as a landmark rather than an administrative area.
 - Return price fields in integer Nepalese rupees (NPR).
 - Convert lakh/crore mentions into integer NPR values.
 - Return area fields in square feet.
@@ -270,7 +276,7 @@ export class AIQueryUnderstandingService {
 
     if (!this.hasLoggedConfigurationFallback) {
       console.warn(
-        "[ai-query] OPENAI_API_KEY is not configured, so recommendation brief parsing will fall back to the rule-based parser.",
+        "[ai-query] OPENAI_API_KEY is not configured, so recommendation brief parsing from the free-text field will be skipped.",
       );
       this.hasLoggedConfigurationFallback = true;
     }
