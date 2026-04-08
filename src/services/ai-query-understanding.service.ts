@@ -64,6 +64,7 @@ Rules:
 - Convert lakh/crore mentions into integer NPR values.
 - Return area fields in square feet.
 - Convert Nepali land units before returning area fields.
+- Distance from highway should be in kilometers, but if the query implies a very close distance without specifying units, interpret that as maxDistanceFromHighway=1 km, if says 200m then maxDistanceFromHighway=0.2 km.
 - Hills conversion table: 1 ropani = 5476 sq ft, 1 aana/anna = 342.25 sq ft, 1 paisa = 85.5625 sq ft, 1 daam/dam = 21.390625 sq ft.
 - Terai conversion table: 1 bigha = 72900 sq ft, 1 kattha/katha = 3645 sq ft, 1 dhur = 182.25 sq ft.
 - Never return area in square meters for this API.
