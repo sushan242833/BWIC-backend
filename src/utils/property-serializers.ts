@@ -14,6 +14,8 @@ export interface PropertySummaryDto {
     name: string;
   } | null;
   location: string;
+  latitude?: number;
+  longitude?: number;
   price: number;
   roi: number;
   status: string;
@@ -51,6 +53,8 @@ export const serializePropertySummary = (
   categoryId: property.categoryId,
   category: serializeCategory(property.category),
   location: property.location,
+  latitude: property.latitude,
+  longitude: property.longitude,
   price: property.price,
   roi: property.roi,
   status: property.status,
