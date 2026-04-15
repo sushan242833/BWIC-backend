@@ -13,7 +13,9 @@ export class RecommendationController {
             )
           : (req.body as RecommendationRequestDto);
 
-      const result = await recommendationService.getRecommendations(source);
+      const result = await recommendationService.getRecommendations(source, {
+        userId: req.user?.id,
+      });
 
       return sendSuccess(res, {
         message: "Top recommendations fetched successfully",

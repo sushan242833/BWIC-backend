@@ -24,10 +24,10 @@ test("gives full highway access points when property distance in meters is withi
     },
   );
 
-  assert.equal(scored.scoreBreakdown?.distance, 5);
+  assert.equal(scored.scoreBreakdown?.highwayAccess, 5);
   assert.match(
-    scored.explanation.find((item) => item.category === "distance")?.reason ||
-      "",
+    scored.explanation.find((item) => item.category === "highwayAccess")
+      ?.reason || "",
     /within your preferred distance from the highway/i,
   );
 });

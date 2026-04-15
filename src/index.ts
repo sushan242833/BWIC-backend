@@ -16,6 +16,7 @@ import { locationRouter } from "@routes/location.route";
 import { propertiesRouter } from "@routes/properties.route";
 import { recommendationRouter } from "@routes/recommendation.route";
 import { statsRouter } from "@routes/stats.routes";
+import { userRouter } from "@routes/user.route";
 import env from "@config/env";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 
@@ -52,6 +53,7 @@ app.use(cookieParser());
 app.use(express.json());
 
 app.use(API_ROUTES.auth, authRouter);
+app.use(API_ROUTES.user, userRouter);
 app.use(API_ROUTES.properties, propertiesRouter);
 app.use(API_ROUTES.recommendations, recommendationRouter);
 app.use(API_ROUTES.categories, categoriesRouter);

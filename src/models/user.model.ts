@@ -6,6 +6,7 @@ import {
   DataType,
   Default,
   HasMany,
+  HasOne,
   IsEmail,
   Model,
   PrimaryKey,
@@ -15,6 +16,7 @@ import {
 } from "sequelize-typescript";
 import { Optional } from "sequelize";
 import { PasswordResetToken } from "@models/password-reset-token.model";
+import { UserRecommendationSettings } from "@models/user-recommendation-settings.model";
 
 export const USER_ROLES = ["ADMIN", "USER"] as const;
 export const USER_ROLE = {
@@ -76,6 +78,9 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
 
   @HasMany(() => PasswordResetToken)
   passwordResetTokens!: PasswordResetToken[];
+
+  @HasOne(() => UserRecommendationSettings)
+  recommendationSettings?: UserRecommendationSettings;
 
   @CreatedAt
   createdAt!: Date;

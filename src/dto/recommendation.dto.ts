@@ -1,4 +1,5 @@
 import type { PropertyStatus } from "@constants/property";
+import type { RecommendationWeightsDto } from "@dto/recommendation-settings.dto";
 import type { PropertySummaryDto } from "@utils/property-serializers";
 
 export interface RecommendationMustHaveDto {
@@ -104,6 +105,7 @@ export interface RecommendationParsedBriefMetadataDto {
 
 export interface RecommendationResponseMetaDto {
   parsedBrief: RecommendationParsedBriefMetadataDto;
+  appliedWeights: RecommendationWeightsDto;
 }
 
 export interface RecommendationRequestDto {
@@ -119,7 +121,7 @@ export type RecommendationScoreKey =
   | "price"
   | "roi"
   | "area"
-  | "distance";
+  | "highwayAccess";
 
 export type RecommendationExplanationTone = "positive" | "negative" | "neutral";
 
@@ -135,7 +137,7 @@ export interface RecommendationScoreBreakdownDto {
   price?: number;
   roi?: number;
   area?: number;
-  distance?: number;
+  highwayAccess?: number;
 }
 
 export interface RecommendationResultDto {

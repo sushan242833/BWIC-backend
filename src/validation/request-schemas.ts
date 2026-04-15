@@ -10,6 +10,7 @@ import {
   PROPERTY_AREA_NEPALI_PATTERN,
   PROPERTY_STATUSES,
 } from "@constants/property";
+import { RECOMMENDATION_WEIGHT_TOTAL } from "@constants/recommendation-weights";
 import {
   propertySortValues,
   validatePropertyFilterCombinations,
@@ -457,3 +458,40 @@ export const recommendationBodySchema = z
     preferences: recommendationPreferencesSchema.optional(),
   })
   .merge(recommendationPaginationSchema);
+
+export const recommendationSettingsUpdateSchema = z
+  .object({
+    location: requiredNumber("location"),
+    price: requiredNumber("price"),
+    area: requiredNumber("area"),
+    roi: requiredNumber("roi"),
+    highwayAccess: requiredNumber("highwayAccess"),
+  })
+  .superRefine((value, ctx) => {
+    const total =
+      Math.round(
+        (value.location +
+          value.price +
+          value.area +
+          value.roi +
+          value.highwayAccess) *
+          100,
+      ) / 100;
+
+    if (total <= 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["weights"],
+        message: "At least one recommendation weight must be greater than 0",
+      });
+      return;
+    }
+
+    if (total !== RECOMMENDATION_WEIGHT_TOTAL) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["weights"],
+        message: `Recommendation weights must total ${RECOMMENDATION_WEIGHT_TOTAL}`,
+      });
+    }
+  });

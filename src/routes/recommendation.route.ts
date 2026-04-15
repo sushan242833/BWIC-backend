@@ -1,5 +1,6 @@
 import { Router } from "express";
 import RecommendationController from "@controller/recommendation.controller";
+import { optionalAuth } from "../middleware/auth.middleware";
 import { validateRequest } from "../validation/request-validation";
 import {
   recommendationBodySchema,
@@ -10,12 +11,14 @@ const router = Router();
 
 router.get(
   "/",
+  optionalAuth,
   validateRequest({ query: recommendationQuerySchema }),
   (req, res, next) =>
     RecommendationController.getRecommendations(req, res, next),
 );
 router.post(
   "/",
+  optionalAuth,
   validateRequest({ body: recommendationBodySchema }),
   (req, res, next) =>
     RecommendationController.getRecommendations(req, res, next),

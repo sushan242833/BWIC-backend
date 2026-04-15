@@ -3,6 +3,10 @@ import {
   recommendationConfig,
 } from "@config/recommendation";
 import {
+  DEFAULT_RECOMMENDATION_WEIGHTS,
+  type RecommendationWeights,
+} from "@constants/recommendation-weights";
+import {
   RecommendationExplanationDto,
   RecommendationPreferencesDto,
   RecommendationScoreBreakdownDto,
@@ -41,8 +45,6 @@ export interface RecommendationScore {
   penalties: string[];
   scoreBreakdown?: RecommendationScoreBreakdownDto;
 }
-
-const WEIGHTS = recommendationConfig.scoreWeights;
 
 const DEFAULT_LOCATION_RADIUS_KM = recommendationConfig.defaultLocationRadiusKm;
 const STRONG_MATCH_THRESHOLD_PERCENT =
@@ -161,6 +163,7 @@ const haversineKm = (
 export const scoreProperty = (
   property: RecommendationProperty,
   preferences: RecommendationPreferences,
+  weights: RecommendationWeights = DEFAULT_RECOMMENDATION_WEIGHTS,
 ): RecommendationScore => {
   const explanation: RecommendationExplanationDto[] = [];
   const topReasons: string[] = [];
@@ -181,14 +184,15 @@ export const scoreProperty = (
   );
 
   if (
+    weights.location > 0 &&
     preferences.latitude !== undefined &&
     preferences.longitude !== undefined
   ) {
-    maxPossible += WEIGHTS.location;
+    maxPossible += weights.location;
 
     let points = 0;
     const textPoints = locationTextMatch.matched
-      ? round2(WEIGHTS.location * locationTextMatch.ratio)
+      ? round2(weights.location * locationTextMatch.ratio)
       : 0;
     const radiusKm =
       preferences.locationRadiusKm !== undefined &&
@@ -209,11 +213,11 @@ export const scoreProperty = (
         property.longitude,
       );
       const distancePoints = safeRatioScore(
-        WEIGHTS.location,
+        weights.location,
         distanceKm / radiusKm,
       );
       points = Math.max(distancePoints, textPoints);
-      const percent = toPercentOfWeight(points, WEIGHTS.location);
+      const percent = toPercentOfWeight(points, weights.location);
       const distanceReason =
         distanceKm <= radiusKm
           ? `Near your preferred location at about ${formatCompactNumber(distanceKm)} km away`
@@ -242,15 +246,10 @@ export const scoreProperty = (
         points = textPoints;
         const reason = locationTextMatch.reason;
         explanation.push(
-          createExplanation(
-            "location",
-            reason,
-            points,
-            "positive",
-          ),
+          createExplanation("location", reason, points, "positive"),
         );
         if (
-          toPercentOfWeight(points, WEIGHTS.location) >=
+          toPercentOfWeight(points, weights.location) >=
           STRONG_MATCH_THRESHOLD_PERCENT
         ) {
           pushUnique(topReasons, reason);
@@ -275,10 +274,10 @@ export const scoreProperty = (
 
     score += points;
     addBreakdownValue(scoreBreakdown, "location", points);
-  } else if (preferences.location) {
-    maxPossible += WEIGHTS.location;
+  } else if (weights.location > 0 && preferences.location) {
+    maxPossible += weights.location;
     const points = locationTextMatch.matched
-      ? round2(WEIGHTS.location * locationTextMatch.ratio)
+      ? round2(weights.location * locationTextMatch.ratio)
       : 0;
     score += points;
     const reason = locationTextMatch.matched
@@ -293,7 +292,7 @@ export const scoreProperty = (
       ),
     );
     if (
-      toPercentOfWeight(points, WEIGHTS.location) >=
+      toPercentOfWeight(points, weights.location) >=
       STRONG_MATCH_THRESHOLD_PERCENT
     ) {
       pushUnique(topReasons, reason);
@@ -304,10 +303,11 @@ export const scoreProperty = (
   }
 
   if (
-    (preferences.price !== undefined && preferences.price > 0) ||
-    (preferences.priceCeiling !== undefined && preferences.priceCeiling > 0)
+    weights.price > 0 &&
+    ((preferences.price !== undefined && preferences.price > 0) ||
+      (preferences.priceCeiling !== undefined && preferences.priceCeiling > 0))
   ) {
-    maxPossible += WEIGHTS.price;
+    maxPossible += weights.price;
     const price = parseMetric(property.price);
     const hasPreferredPrice =
       preferences.price !== undefined && preferences.price > 0;
@@ -325,12 +325,12 @@ export const scoreProperty = (
           Math.abs(price - preferences.price!) / preferences.price!;
 
         if (priceDeltaRatio <= CLOSE_PRICE_DELTA_RATIO) {
-          points = WEIGHTS.price;
+          points = weights.price;
           reason = "Within 2.5% of your preferred price";
           sentiment = "positive";
         } else if (price > preferences.price!) {
           points = scoreWithTolerance(
-            WEIGHTS.price,
+            weights.price,
             priceDeltaRatio,
             CLOSE_PRICE_DELTA_RATIO,
           );
@@ -338,7 +338,7 @@ export const scoreProperty = (
           sentiment = points > 0 ? "neutral" : "negative";
         } else {
           points = scoreWithTolerance(
-            WEIGHTS.price,
+            weights.price,
             priceDeltaRatio,
             CLOSE_PRICE_DELTA_RATIO,
           );
@@ -349,12 +349,12 @@ export const scoreProperty = (
         const priceDeltaRatio = Math.abs(price - priceCeiling) / priceCeiling;
 
         if (priceDeltaRatio <= CLOSE_PRICE_DELTA_RATIO) {
-          points = WEIGHTS.price;
+          points = weights.price;
           reason = "Within 2.5% of your budget target";
           sentiment = "positive";
         } else if (price > priceCeiling) {
           points = scoreWithTolerance(
-            WEIGHTS.price,
+            weights.price,
             priceDeltaRatio,
             CLOSE_PRICE_DELTA_RATIO,
           );
@@ -362,7 +362,7 @@ export const scoreProperty = (
           sentiment = points > 0 ? "neutral" : "negative";
         } else {
           points = scoreWithTolerance(
-            WEIGHTS.price,
+            weights.price,
             priceDeltaRatio,
             CLOSE_PRICE_DELTA_RATIO,
           );
@@ -382,7 +382,7 @@ export const scoreProperty = (
         "Price data is missing, so price fit could not be confirmed",
       );
     } else if (
-      toPercentOfWeight(points, WEIGHTS.price) >= STRONG_MATCH_THRESHOLD_PERCENT
+      toPercentOfWeight(points, weights.price) >= STRONG_MATCH_THRESHOLD_PERCENT
     ) {
       pushUnique(topReasons, reason);
     } else {
@@ -391,13 +391,13 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "price", points);
   }
 
-  if (preferences.roi !== undefined && preferences.roi > 0) {
-    maxPossible += WEIGHTS.roi;
+  if (weights.roi > 0 && preferences.roi !== undefined && preferences.roi > 0) {
+    maxPossible += weights.roi;
     const roi = parseMetric(property.roi);
     let points = 0;
     if (roi !== undefined) {
       const roiDifference = preferences.roi - roi;
-      points = getRecommendationRoiPoints(roiDifference);
+      points = getRecommendationRoiPoints(roiDifference, weights.roi);
     }
     score += points;
     let reason = "ROI data missing, so ROI preference could not be scored";
@@ -419,7 +419,7 @@ export const scoreProperty = (
         penalties,
         "ROI data is missing, so return potential could not be confirmed",
       );
-    } else if (points >= WEIGHTS.roi) {
+    } else if (points >= weights.roi) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);
@@ -427,14 +427,18 @@ export const scoreProperty = (
     addBreakdownValue(scoreBreakdown, "roi", points);
   }
 
-  if (preferences.area !== undefined && preferences.area > 0) {
-    maxPossible += WEIGHTS.area;
+  if (
+    weights.area > 0 &&
+    preferences.area !== undefined &&
+    preferences.area > 0
+  ) {
+    maxPossible += weights.area;
     const area = parseMetric(property.area);
     const points =
       area === undefined
         ? 0
         : safeRatioScore(
-            WEIGHTS.area,
+            weights.area,
             Math.abs(area - preferences.area) / preferences.area,
           );
     score += points;
@@ -464,7 +468,7 @@ export const scoreProperty = (
         "Area data is missing, so size fit could not be confirmed",
       );
     } else if (
-      toPercentOfWeight(points, WEIGHTS.area) >= STRONG_MATCH_THRESHOLD_PERCENT
+      toPercentOfWeight(points, weights.area) >= STRONG_MATCH_THRESHOLD_PERCENT
     ) {
       pushUnique(topReasons, reason);
     } else {
@@ -474,10 +478,11 @@ export const scoreProperty = (
   }
 
   if (
+    weights.highwayAccess > 0 &&
     preferences.maxDistanceFromHighway !== undefined &&
     preferences.maxDistanceFromHighway > 0
   ) {
-    maxPossible += WEIGHTS.distance;
+    maxPossible += weights.highwayAccess;
     const distance = parsePropertyHighwayDistanceKm(
       property.distanceFromHighway,
     );
@@ -485,10 +490,10 @@ export const scoreProperty = (
 
     if (distance !== undefined) {
       if (distance <= preferences.maxDistanceFromHighway) {
-        points = WEIGHTS.distance;
+        points = weights.highwayAccess;
       } else {
         points = safeRatioScore(
-          WEIGHTS.distance,
+          weights.highwayAccess,
           (distance - preferences.maxDistanceFromHighway) /
             preferences.maxDistanceFromHighway,
         );
@@ -510,21 +515,23 @@ export const scoreProperty = (
       }
     }
 
-    explanation.push(createExplanation("distance", reason, points, sentiment));
+    explanation.push(
+      createExplanation("highwayAccess", reason, points, sentiment),
+    );
     if (distance === undefined) {
       pushUnique(
         penalties,
         "Distance from highway data is missing, so accessibility fit could not be confirmed",
       );
     } else if (
-      toPercentOfWeight(points, WEIGHTS.distance) >=
+      toPercentOfWeight(points, weights.highwayAccess) >=
       STRONG_MATCH_THRESHOLD_PERCENT
     ) {
       pushUnique(topReasons, reason);
     } else {
       pushUnique(penalties, reason);
     }
-    addBreakdownValue(scoreBreakdown, "distance", points);
+    addBreakdownValue(scoreBreakdown, "highwayAccess", points);
   }
 
   const matchPercentage =

@@ -1,5 +1,6 @@
 import { recommendationConfig } from "@config/recommendation";
 import type { PropertyStatus } from "@constants/property";
+import type { RecommendationWeights } from "@constants/recommendation-weights";
 import type {
   RecommendationRequestDto,
   RecommendationResponseMetaDto,
@@ -8,6 +9,7 @@ import type {
 import { Category } from "@models/category.model";
 import { Property } from "@models/properties.model";
 import recommendationQueryParserService from "@services/recommendation-query-parser.service";
+import recommendationWeightService from "@services/recommendation-weight.service";
 import type { PaginationMeta } from "@utils/api-response";
 import { geocodeLocation } from "@utils/geocoding";
 import { buildRecommendationPropertyWhere } from "@utils/property-filters";
@@ -102,27 +104,38 @@ export class RecommendationService {
 
   private hasLocationPreference(
     preferences: RecommendationPreferences,
+    weights: RecommendationWeights,
   ): boolean {
-    return (
-      Boolean(preferences.location) ||
-      (preferences.latitude !== undefined &&
-        preferences.longitude !== undefined)
+    return Boolean(
+      weights.location > 0 &&
+        (preferences.location ||
+          (preferences.latitude !== undefined &&
+            preferences.longitude !== undefined)),
     );
   }
 
   private hasScoringPreferences(
     preferences: RecommendationPreferences,
+    weights: RecommendationWeights,
   ): boolean {
     return Boolean(
-      preferences.location ||
-      (preferences.latitude !== undefined &&
-        preferences.longitude !== undefined) ||
-      (preferences.price !== undefined && preferences.price > 0) ||
-      (preferences.priceCeiling !== undefined && preferences.priceCeiling > 0) ||
-      (preferences.roi !== undefined && preferences.roi > 0) ||
-      (preferences.area !== undefined && preferences.area > 0) ||
-      (preferences.maxDistanceFromHighway !== undefined &&
-        preferences.maxDistanceFromHighway > 0),
+      (weights.location > 0 &&
+        (preferences.location ||
+          (preferences.latitude !== undefined &&
+            preferences.longitude !== undefined))) ||
+        (weights.price > 0 &&
+          ((preferences.price !== undefined && preferences.price > 0) ||
+            (preferences.priceCeiling !== undefined &&
+              preferences.priceCeiling > 0))) ||
+        (weights.roi > 0 &&
+          preferences.roi !== undefined &&
+          preferences.roi > 0) ||
+        (weights.area > 0 &&
+          preferences.area !== undefined &&
+          preferences.area > 0) ||
+        (weights.highwayAccess > 0 &&
+          preferences.maxDistanceFromHighway !== undefined &&
+          preferences.maxDistanceFromHighway > 0),
     );
   }
 
@@ -156,9 +169,7 @@ export class RecommendationService {
     };
   }
 
-  private buildCandidateWhere(
-    mustHave: RecommendationRequestDto["mustHave"],
-  ) {
+  private buildCandidateWhere(mustHave: RecommendationRequestDto["mustHave"]) {
     return buildRecommendationPropertyWhere({
       categoryId: mustHave?.categoryId,
       location: mustHave?.location,
@@ -253,9 +264,14 @@ export class RecommendationService {
 
   async getRecommendations(
     input: RecommendationRequestDto,
+    context: { userId?: number } = {},
   ): Promise<RecommendationServiceResponse> {
     const { page, limit } = this.normalizePagination(input.page, input.limit);
     const parsedQuery = await recommendationQueryParserService.parse(input);
+    const weightResolution = await recommendationWeightService.resolveForUser(
+      context.userId,
+    );
+    const weights = weightResolution.weights;
     const basePreferences = await this.enrichLocationCoordinates(
       parsedQuery.preferences,
     );
@@ -263,7 +279,10 @@ export class RecommendationService {
       basePreferences,
       parsedQuery.mustHave,
     );
-    const hasScoringPreferences = this.hasScoringPreferences(preferences);
+    const hasScoringPreferences = this.hasScoringPreferences(
+      preferences,
+      weights,
+    );
     const candidateWhere = this.buildCandidateWhere(parsedQuery.mustHave);
 
     const candidates = await Property.findAll({
@@ -279,14 +298,14 @@ export class RecommendationService {
     });
 
     const visibilityOptions = {
-      hasLocationPreference: this.hasLocationPreference(preferences),
+      hasLocationPreference: this.hasLocationPreference(preferences, weights),
       hasScoringPreferences,
       minimumMatchPercentage: this.minimumRecommendationMatchPercentage,
     };
 
     const ranked = filterVisibleRecommendations(
       candidates.map<RecommendationResultDto>((property) => {
-        const scored = scoreProperty(property, preferences);
+        const scored = scoreProperty(property, preferences, weights);
 
         return {
           property: serializePropertySummary(property),
@@ -300,10 +319,9 @@ export class RecommendationService {
         };
       }),
       visibilityOptions,
-    )
-      .sort(
-        (a, b) => b.score - a.score || b.matchPercentage - a.matchPercentage,
-      );
+    ).sort(
+      (a, b) => b.score - a.score || b.matchPercentage - a.matchPercentage,
+    );
 
     const shortlisted = ranked.slice(0, this.topRecommendationLimit);
     const total = shortlisted.length;
@@ -321,6 +339,7 @@ export class RecommendationService {
         hasPrev: page > 1,
       },
       meta: {
+        appliedWeights: weights,
         parsedBrief: {
           ...parsedQuery.parsedBrief,
           appliedPreferences: basePreferences,
