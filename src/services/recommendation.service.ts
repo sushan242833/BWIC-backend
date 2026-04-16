@@ -2,6 +2,7 @@ import { recommendationConfig } from "@config/recommendation";
 import type { PropertyStatus } from "@constants/property";
 import type { RecommendationWeights } from "@constants/recommendation-weights";
 import type {
+  RecommendationDetailDto,
   RecommendationRequestDto,
   RecommendationResponseMetaDto,
   RecommendationResultDto,
@@ -19,11 +20,19 @@ import {
   scoreProperty,
 } from "@utils/recommendation";
 import { buildLocationSearchProfile } from "@utils/nlp/location-parser";
+import { AppError } from "../middleware/error.middleware";
 
 export interface RecommendationServiceResponse {
   data: RecommendationResultDto[];
   pagination: PaginationMeta;
   meta: RecommendationResponseMetaDto;
+}
+
+interface RankedRecommendationContext {
+  ranked: RecommendationResultDto[];
+  meta: RecommendationResponseMetaDto;
+  preferences: RecommendationPreferences;
+  weights: RecommendationWeights;
 }
 
 interface RecommendationVisibilityOptions {
@@ -262,11 +271,10 @@ export class RecommendationService {
     };
   }
 
-  async getRecommendations(
+  private async buildRankedRecommendationContext(
     input: RecommendationRequestDto,
     context: { userId?: number } = {},
-  ): Promise<RecommendationServiceResponse> {
-    const { page, limit } = this.normalizePagination(input.page, input.limit);
+  ): Promise<RankedRecommendationContext> {
     const parsedQuery = await recommendationQueryParserService.parse(input);
     const weightResolution = await recommendationWeightService.resolveForUser(
       context.userId,
@@ -323,7 +331,35 @@ export class RecommendationService {
       (a, b) => b.score - a.score || b.matchPercentage - a.matchPercentage,
     );
 
-    const shortlisted = ranked.slice(0, this.topRecommendationLimit);
+    return {
+      ranked,
+      preferences,
+      weights,
+      meta: {
+        appliedWeights: weights,
+        isDefaultWeights: weightResolution.isDefault,
+        weightSource: weightResolution.source,
+        parsedBrief: {
+          ...parsedQuery.parsedBrief,
+          appliedPreferences: basePreferences,
+        },
+      },
+    };
+  }
+
+  async getRecommendations(
+    input: RecommendationRequestDto,
+    context: { userId?: number } = {},
+  ): Promise<RecommendationServiceResponse> {
+    const { page, limit } = this.normalizePagination(input.page, input.limit);
+    const recommendationContext = await this.buildRankedRecommendationContext(
+      input,
+      context,
+    );
+    const shortlisted = recommendationContext.ranked.slice(
+      0,
+      this.topRecommendationLimit,
+    );
     const total = shortlisted.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const offset = (page - 1) * limit;
@@ -338,13 +374,71 @@ export class RecommendationService {
         hasNext: page < totalPages,
         hasPrev: page > 1,
       },
-      meta: {
-        appliedWeights: weights,
-        parsedBrief: {
-          ...parsedQuery.parsedBrief,
-          appliedPreferences: basePreferences,
+      meta: recommendationContext.meta,
+    };
+  }
+
+  async getRecommendationDetail(
+    propertyId: number,
+    input: RecommendationRequestDto,
+    context: { userId?: number } = {},
+  ): Promise<RecommendationDetailDto> {
+    const recommendationContext = await this.buildRankedRecommendationContext(
+      input,
+      context,
+    );
+    const rankedIndex = recommendationContext.ranked.findIndex(
+      (item) => item.property.id === propertyId,
+    );
+    const rankedItem =
+      rankedIndex >= 0 ? recommendationContext.ranked[rankedIndex] : null;
+
+    if (rankedItem) {
+      const { property, ...recommendation } = rankedItem;
+
+      return {
+        property,
+        recommendation: {
+          ...recommendation,
+          rank: rankedIndex + 1,
         },
+        meta: recommendationContext.meta,
+      };
+    }
+
+    const property = await Property.findByPk(propertyId, {
+      attributes: { exclude: ["created_at", "updated_at"] },
+      include: [
+        {
+          model: Category,
+          attributes: ["id", "name"],
+        },
+      ],
+    });
+
+    if (!property) {
+      throw new AppError("Property not found", 404);
+    }
+
+    const scored = scoreProperty(
+      property,
+      recommendationContext.preferences,
+      recommendationContext.weights,
+    );
+
+    return {
+      property: serializePropertySummary(property),
+      recommendation: {
+        matchPercentage: scored.matchPercentage,
+        score: scored.score,
+        explanation: scored.explanation,
+        rankingSummary: scored.rankingSummary,
+        topReasons: scored.topReasons,
+        penalties: scored.penalties,
+        scoreBreakdown: scored.scoreBreakdown,
+        rank: null,
       },
+      meta: recommendationContext.meta,
     };
   }
 }

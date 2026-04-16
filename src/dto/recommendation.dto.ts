@@ -106,6 +106,8 @@ export interface RecommendationParsedBriefMetadataDto {
 export interface RecommendationResponseMetaDto {
   parsedBrief: RecommendationParsedBriefMetadataDto;
   appliedWeights: RecommendationWeightsDto;
+  isDefaultWeights: boolean;
+  weightSource: "default" | "user";
 }
 
 export interface RecommendationRequestDto {
@@ -149,4 +151,12 @@ export interface RecommendationResultDto {
   topReasons: string[];
   penalties: string[];
   scoreBreakdown?: RecommendationScoreBreakdownDto;
+}
+
+export interface RecommendationDetailDto {
+  property: PropertySummaryDto;
+  recommendation: Omit<RecommendationResultDto, "property"> & {
+    rank: number | null;
+  };
+  meta: RecommendationResponseMetaDto;
 }
