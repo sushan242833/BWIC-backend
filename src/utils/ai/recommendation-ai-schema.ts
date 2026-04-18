@@ -102,6 +102,7 @@ const aiRecommendationExtractionPayloadSchema = z
     category: nullableTrimmedString("category", 40),
     location: z.union([aiLocationPayloadSchema, z.null()]).optional(),
     maxPrice: nullableNumber("maxPrice", { min: 1 }),
+    preferredPrice: nullableNumber("preferredPrice", { min: 1 }),
     minPrice: nullableNumber("minPrice", { min: 1 }),
     bedrooms: nullableNumber("bedrooms", { min: 1, max: 20, integer: true }),
     bathrooms: nullableNumber("bathrooms", { min: 1, max: 20, integer: true }),
@@ -131,6 +132,7 @@ export interface AIRecommendationExtraction {
   category?: string;
   location?: AIRecommendationLocation;
   maxPrice?: number;
+  preferredPrice?: number;
   minPrice?: number;
   bedrooms?: number;
   bathrooms?: number;
@@ -180,6 +182,7 @@ export const sanitizeAIRecommendationExtraction = (
   category: toOptionalValue(payload.category),
   location: sanitizeLocation(payload.location),
   maxPrice: toOptionalValue(payload.maxPrice),
+  preferredPrice: toOptionalValue(payload.preferredPrice),
   minPrice: toOptionalValue(payload.minPrice),
   bedrooms: toOptionalValue(payload.bedrooms),
   bathrooms: toOptionalValue(payload.bathrooms),
@@ -208,6 +211,7 @@ export const parseAIRecommendationExtraction = (
     sanitized.category ||
       sanitized.location?.value ||
       sanitized.maxPrice !== undefined ||
+      sanitized.preferredPrice !== undefined ||
       sanitized.minPrice !== undefined ||
       sanitized.bedrooms !== undefined ||
       sanitized.bathrooms !== undefined ||
@@ -235,6 +239,7 @@ export const aiRecommendationExtractionJsonSchema = {
       "category",
       "location",
       "maxPrice",
+      "preferredPrice",
       "minPrice",
       "bedrooms",
       "bathrooms",
@@ -287,6 +292,9 @@ export const aiRecommendationExtractionJsonSchema = {
         ],
       },
       maxPrice: {
+        anyOf: [{ type: "number", minimum: 1 }, { type: "null" }],
+      },
+      preferredPrice: {
         anyOf: [{ type: "number", minimum: 1 }, { type: "null" }],
       },
       minPrice: {

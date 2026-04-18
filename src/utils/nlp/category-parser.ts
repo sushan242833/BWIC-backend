@@ -15,6 +15,13 @@ interface CategoryIntentRule {
   patterns: RegExp[];
 }
 
+const GENERIC_CATEGORY_TERMS = new Set([
+  "property",
+  "properties",
+  "real estate",
+  "estate",
+]);
+
 const CATEGORY_INTENT_RULES: CategoryIntentRule[] = [
   {
     canonical: "land",
@@ -55,6 +62,14 @@ const normalizeToken = (value: string) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+
+export const isGenericCategoryCandidate = (value?: string): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  return GENERIC_CATEGORY_TERMS.has(normalizeToken(value));
+};
 
 const scoreCategoryMatch = (categoryName: string, aliases: string[]): number => {
   const normalizedName = normalizeToken(categoryName);
@@ -113,6 +128,10 @@ export const resolveCategoryCandidate = (
   categories: CategoryLike[],
 ): CategoryLike | null => {
   if (!input) {
+    return null;
+  }
+
+  if (typeof input === "string" && isGenericCategoryCandidate(input)) {
     return null;
   }
 

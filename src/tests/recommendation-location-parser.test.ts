@@ -27,6 +27,22 @@ test("parses 'around kalanki' as a nearby location instead of a strict filter", 
   assert.equal(result.detectedLocation?.mode, "nearby");
 });
 
+test("keeps nearby location and compact preferred price from the same brief", () => {
+  const result = parseRecommendationBrief("land around bafal around 2cr");
+
+  assert.equal(result.mustHave.location, undefined);
+  assert.equal(result.preferences.location, "Bafal");
+  assert.equal(result.preferences.price, 20000000);
+  assert.equal(result.detectedLocation?.mode, "nearby");
+  assert.equal(
+    result.detectedEntities.some(
+      (entity) =>
+        entity.type === "preferredPrice" && entity.value === 20000000,
+    ),
+    true,
+  );
+});
+
 test("parses 'in kathmandu' as a strict must-have location", () => {
   const result = parseRecommendationBrief("land in kathmandu");
 

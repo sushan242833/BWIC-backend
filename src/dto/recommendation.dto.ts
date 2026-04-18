@@ -72,6 +72,7 @@ export interface RecommendationAIExtractionDto {
     confidence?: number;
   };
   maxPrice?: number;
+  preferredPrice?: number;
   minPrice?: number;
   bedrooms?: number;
   bathrooms?: number;

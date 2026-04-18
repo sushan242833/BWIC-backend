@@ -13,10 +13,12 @@ import { Category } from "@models/category.model";
 import { normalizePropertyStatus } from "@constants/property";
 import aiQueryUnderstandingService from "@services/ai-query-understanding.service";
 import {
+  isGenericCategoryCandidate,
   parseCategoryCandidate,
   resolveCategoryCandidate,
   type CategoryLike,
 } from "@utils/nlp/category-parser";
+import { parseRecommendationBrief } from "@utils/nlp/recommendation-brief-parser";
 import {
   buildLocationSearchProfile,
   type LocationSearchProfile,
@@ -266,6 +268,11 @@ export class RecommendationQueryParserService {
     }
 
     if (next.category) {
+      if (isGenericCategoryCandidate(next.category)) {
+        delete next.category;
+        return omitUndefined(next) as T;
+      }
+
       const resolvedCategory = resolveCategoryCandidate(
         next.category,
         categories,
@@ -351,7 +358,7 @@ export class RecommendationQueryParserService {
     };
 
     const categoryInput = this.normalizeString(extraction.category);
-    if (categoryInput) {
+    if (categoryInput && !isGenericCategoryCandidate(categoryInput)) {
       const parsedCategory = parseCategoryCandidate(categoryInput);
       const categoryValue = parsedCategory?.canonical || categoryInput;
       mapped.mustHave.category = categoryValue;
@@ -403,6 +410,15 @@ export class RecommendationQueryParserService {
         type: "maxPrice",
         value: extraction.maxPrice,
         raw: String(extraction.maxPrice),
+      });
+    }
+
+    if (extraction.preferredPrice !== undefined) {
+      mapped.preferences.price = extraction.preferredPrice;
+      this.pushDetectedEntity(detectedEntities, {
+        type: "preferredPrice",
+        value: extraction.preferredPrice,
+        raw: String(extraction.preferredPrice),
       });
     }
 
@@ -540,20 +556,69 @@ export class RecommendationQueryParserService {
     return this.mapAIExtractionToParsedBrief(aiResult.extraction);
   }
 
-  private buildEmptyParsedBrief(
-    brief?: string,
+  private mergeParsedBriefSources(
+    deterministicParsedBrief: RecommendationParsedBriefSource,
+    aiParsedBrief: RecommendationParsedBriefSource | null,
   ): RecommendationParsedBriefSource {
-    const normalizedBrief = this.normalizeString(brief);
+    if (!aiParsedBrief) {
+      return deterministicParsedBrief;
+    }
+
+    const detectedEntities: RecommendationDetectedEntityDto[] = [];
+    const pushMergedEntity = (entity: RecommendationDetectedEntityDto) => {
+      const exists = detectedEntities.some(
+        (current) =>
+          current.type === entity.type && current.value === entity.value,
+      );
+
+      if (!exists) {
+        detectedEntities.push(entity);
+      }
+    };
+
+    aiParsedBrief.detectedEntities.forEach(pushMergedEntity);
+    deterministicParsedBrief.detectedEntities.forEach(pushMergedEntity);
+
+    const detectedLocations: RecommendationDetectedLocationDto[] = [];
+    const pushMergedLocation = (location: RecommendationDetectedLocationDto) => {
+      const exists = detectedLocations.some(
+        (current) =>
+          current.normalizedValue === location.normalizedValue &&
+          current.mode === location.mode,
+      );
+
+      if (!exists) {
+        detectedLocations.push(location);
+      }
+    };
+
+    aiParsedBrief.detectedLocations.forEach(pushMergedLocation);
+    deterministicParsedBrief.detectedLocations.forEach(pushMergedLocation);
+
+    const warnings = [
+      ...new Set([
+        ...deterministicParsedBrief.warnings,
+        ...aiParsedBrief.warnings,
+      ]),
+    ];
+
     return {
-      mustHave: {},
-      preferences: {},
-      detectedEntities: [],
-      detectedLocations: [],
-      warnings: normalizedBrief
-        ? [
-            "Free-text brief was ignored because AI extraction did not return a usable result. Use the structured recommendation filters instead.",
-          ]
-        : [],
+      ...deterministicParsedBrief,
+      ...aiParsedBrief,
+      mustHave: {
+        ...deterministicParsedBrief.mustHave,
+        ...aiParsedBrief.mustHave,
+      },
+      preferences: {
+        ...deterministicParsedBrief.preferences,
+        ...aiParsedBrief.preferences,
+      },
+      detectedEntities,
+      detectedLocation:
+        aiParsedBrief.detectedLocation ??
+        deterministicParsedBrief.detectedLocation,
+      detectedLocations,
+      warnings,
     };
   }
 
@@ -561,8 +626,12 @@ export class RecommendationQueryParserService {
     input: RecommendationRequestDto,
   ): Promise<ParsedRecommendationQueryResult> {
     const brief = this.normalizeString(input.brief);
+    const deterministicParsedBrief = parseRecommendationBrief(brief);
     const aiParsedBrief = await this.parseBriefWithAI(brief);
-    const parsedBrief = aiParsedBrief ?? this.buildEmptyParsedBrief(brief);
+    const parsedBrief = this.mergeParsedBriefSources(
+      deterministicParsedBrief,
+      aiParsedBrief,
+    );
     const manualMustHave = this.sanitizeMustHave(input.mustHave);
     const manualPreferences = this.sanitizePreferences(input.preferences);
 

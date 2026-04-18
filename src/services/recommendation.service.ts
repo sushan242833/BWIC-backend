@@ -9,7 +9,9 @@ import type {
 } from "@dto/recommendation.dto";
 import { Category } from "@models/category.model";
 import { Property } from "@models/properties.model";
-import recommendationQueryParserService from "@services/recommendation-query-parser.service";
+import recommendationQueryParserService, {
+  type ParsedRecommendationQueryResult,
+} from "@services/recommendation-query-parser.service";
 import recommendationWeightService from "@services/recommendation-weight.service";
 import type { PaginationMeta } from "@utils/api-response";
 import { geocodeLocation } from "@utils/geocoding";
@@ -30,6 +32,13 @@ export interface RecommendationServiceResponse {
 
 interface RankedRecommendationContext {
   ranked: RecommendationResultDto[];
+  meta: RecommendationResponseMetaDto;
+  preferences: RecommendationPreferences;
+  weights: RecommendationWeights;
+}
+
+interface RecommendationScoringContext {
+  parsedQuery: ParsedRecommendationQueryResult;
   meta: RecommendationResponseMetaDto;
   preferences: RecommendationPreferences;
   weights: RecommendationWeights;
@@ -271,10 +280,10 @@ export class RecommendationService {
     };
   }
 
-  private async buildRankedRecommendationContext(
+  private async buildRecommendationScoringContext(
     input: RecommendationRequestDto,
     context: { userId?: number } = {},
-  ): Promise<RankedRecommendationContext> {
+  ): Promise<RecommendationScoringContext> {
     const parsedQuery = await recommendationQueryParserService.parse(input);
     const weightResolution = await recommendationWeightService.resolveForUser(
       context.userId,
@@ -287,6 +296,32 @@ export class RecommendationService {
       basePreferences,
       parsedQuery.mustHave,
     );
+
+    return {
+      parsedQuery,
+      preferences,
+      weights,
+      meta: {
+        appliedWeights: weights,
+        isDefaultWeights: weightResolution.isDefault,
+        weightSource: weightResolution.source,
+        parsedBrief: {
+          ...parsedQuery.parsedBrief,
+          appliedPreferences: basePreferences,
+        },
+      },
+    };
+  }
+
+  private async buildRankedRecommendationContext(
+    input: RecommendationRequestDto,
+    context: { userId?: number } = {},
+  ): Promise<RankedRecommendationContext> {
+    const scoringContext = await this.buildRecommendationScoringContext(
+      input,
+      context,
+    );
+    const { parsedQuery, preferences, weights } = scoringContext;
     const hasScoringPreferences = this.hasScoringPreferences(
       preferences,
       weights,
@@ -335,15 +370,7 @@ export class RecommendationService {
       ranked,
       preferences,
       weights,
-      meta: {
-        appliedWeights: weights,
-        isDefaultWeights: weightResolution.isDefault,
-        weightSource: weightResolution.source,
-        parsedBrief: {
-          ...parsedQuery.parsedBrief,
-          appliedPreferences: basePreferences,
-        },
-      },
+      meta: scoringContext.meta,
     };
   }
 
@@ -383,28 +410,10 @@ export class RecommendationService {
     input: RecommendationRequestDto,
     context: { userId?: number } = {},
   ): Promise<RecommendationDetailDto> {
-    const recommendationContext = await this.buildRankedRecommendationContext(
+    const recommendationContext = await this.buildRecommendationScoringContext(
       input,
       context,
     );
-    const rankedIndex = recommendationContext.ranked.findIndex(
-      (item) => item.property.id === propertyId,
-    );
-    const rankedItem =
-      rankedIndex >= 0 ? recommendationContext.ranked[rankedIndex] : null;
-
-    if (rankedItem) {
-      const { property, ...recommendation } = rankedItem;
-
-      return {
-        property,
-        recommendation: {
-          ...recommendation,
-          rank: rankedIndex + 1,
-        },
-        meta: recommendationContext.meta,
-      };
-    }
 
     const property = await Property.findByPk(propertyId, {
       attributes: { exclude: ["created_at", "updated_at"] },

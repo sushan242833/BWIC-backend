@@ -51,7 +51,7 @@ test("maps AI extraction into the existing recommendation request contract", asy
   );
 });
 
-test("ignores the free-text brief when AI extraction is unavailable and keeps structured filters", async () => {
+test("falls back to deterministic brief parsing when AI extraction is unavailable", async () => {
   const parser = new RecommendationQueryParserService({
     aiQueryUnderstandingService: {
       extractRecommendationQuery: async () => null,
@@ -75,11 +75,149 @@ test("ignores the free-text brief when AI extraction is unavailable and keeps st
   assert.equal(result.preferences.location, "Kalanki");
   assert.equal(result.parsedBrief.extractionSource, undefined);
   assert.equal(result.parsedBrief.locationMode, undefined);
-  assert.deepEqual(result.parsedBrief.detectedEntities, []);
+  assert.equal(
+    result.parsedBrief.detectedEntities.some(
+      (entity) => entity.type === "category" && entity.value === "land",
+    ),
+    true,
+  );
   assert.equal(result.parsedBrief.aiExtraction, undefined);
-  assert.deepEqual(result.parsedBrief.warnings, [
-    "Free-text brief was ignored because AI extraction did not return a usable result. Use the structured recommendation filters instead.",
-  ]);
+  assert.deepEqual(result.parsedBrief.warnings, []);
+});
+
+test("supplements partial AI extraction with deterministic compact price parsing", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => ({
+        source: "ai",
+        extraction: {
+          category: "land",
+          location: {
+            value: "Bafal",
+            mode: "nearby",
+            confidence: 0.88,
+          },
+          confidence: 0.9,
+        },
+      }),
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    brief: "land around bafal around 2cr",
+  });
+
+  assert.equal(result.mustHave.category, "Land");
+  assert.equal(result.mustHave.categoryId, 2);
+  assert.equal(result.mustHave.location, undefined);
+  assert.equal(result.preferences.location, "Bafal");
+  assert.equal(result.preferences.price, 20000000);
+  assert.equal(result.parsedBrief.extractionSource, "ai");
+  assert.equal(
+    result.parsedBrief.detectedEntities.some(
+      (entity) =>
+        entity.type === "preferredPrice" && entity.value === 20000000,
+    ),
+    true,
+  );
+});
+
+test("maps AI preferred price into scoring preferences", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => ({
+        source: "ai",
+        extraction: {
+          category: "land",
+          location: {
+            value: "Bafal",
+            mode: "nearby",
+            confidence: 0.88,
+          },
+          preferredPrice: 20000000,
+          confidence: 0.92,
+        },
+      }),
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    brief: "land around bafal around 2cr",
+  });
+
+  assert.equal(result.mustHave.maxPrice, undefined);
+  assert.equal(result.preferences.price, 20000000);
+  assert.equal(
+    result.parsedBrief.detectedEntities.some(
+      (entity) =>
+        entity.type === "preferredPrice" && entity.value === 20000000,
+    ),
+    true,
+  );
+});
+
+test("treats generic property category as all categories", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => ({
+        source: "ai",
+        extraction: {
+          category: "property",
+          location: {
+            value: "Sitapaila",
+            mode: "nearby",
+            confidence: 0.88,
+          },
+          preferredPrice: 20000000,
+          confidence: 0.92,
+        },
+      }),
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    brief: "property near sitapaila around 2cr",
+  });
+
+  assert.equal(result.mustHave.category, undefined);
+  assert.equal(result.mustHave.categoryId, undefined);
+  assert.equal(result.preferences.location, "Sitapaila");
+  assert.equal(result.preferences.price, 20000000);
+  assert.deepEqual(result.parsedBrief.warnings, []);
+  assert.equal(
+    result.parsedBrief.detectedEntities.some(
+      (entity) => entity.type === "category",
+    ),
+    false,
+  );
+});
+
+test("ignores generic property manual category instead of warning", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => null,
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    mustHave: {
+      category: "property",
+    },
+    preferences: {
+      location: "Sitapaila",
+      price: 20000000,
+    },
+  });
+
+  assert.equal(result.mustHave.category, undefined);
+  assert.equal(result.mustHave.categoryId, undefined);
+  assert.equal(result.preferences.location, "Sitapaila");
+  assert.equal(result.preferences.price, 20000000);
+  assert.deepEqual(result.parsedBrief.warnings, []);
 });
 
 test("uses the AI area value directly in the recommendation contract", async () => {

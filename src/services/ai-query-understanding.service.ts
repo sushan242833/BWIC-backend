@@ -59,7 +59,7 @@ You extract structured real-estate search intent for Nepal property recommendati
 Return JSON only. Do not explain anything outside JSON.
 
 Rules:
-- Interpret Nepali real-estate language such as home, house, apartment, flat, land, plot, ghaderi, lakh, crore, Kathmandu, Lalitpur, Bhaktapur, Baneshwor, Kalanki, Koteshwor, Bafal, Gongabu, and landmarks like schools or hospitals.
+- Interpret Nepali real-estate language such as home, house, apartment, flat, land, plot, ghaderi, lakh, lac, crore, cr, Kathmandu, Lalitpur, Bhaktapur, Baneshwor, Kalanki, Koteshwor, Bafal, Gongabu, and landmarks like schools or hospitals.
 - The user may write in Nepali, English, Hindi, Hinglish, Chinese, Japanese, or any other language, including mixed-language or mixed-script text.
 - Understand non-Latin scripts and translate mentally before extraction.
 - Return all string fields in English or common Romanized Nepal place names using Latin characters so downstream filters can use them consistently.
@@ -72,7 +72,10 @@ Rules:
 - Prefer the most specific supported place or landmark phrase from the query instead of a broader city if both are mentioned.
 - Do not reject a location just because it is uncommon, unseen, or phrased as a landmark rather than an administrative area.
 - Return price fields in integer Nepalese rupees (NPR).
-- Convert lakh/crore mentions into integer NPR values.
+- Convert lakh/lac/crore/cr mentions into integer NPR values, including compact forms like 2cr or 75lakh.
+- Use maxPrice for ceiling language like under, below, less than, not more than, up to, within budget, or maximum budget.
+- Use preferredPrice for target language like around, about, approximately, roughly, ideal, target, or preferred price.
+- Do not use maxPrice for an "around/about" price unless the query also clearly says it is a maximum budget.
 - Return area fields in square feet.
 - Convert Nepali land units before returning area fields.
 - Distance from highway should be in kilometers, but if the query implies a very close distance without specifying units, interpret that as maxDistanceFromHighway=1 km, if says 200m then maxDistanceFromHighway=0.2 km.
@@ -85,6 +88,7 @@ Rules:
 - Use location.mode="soft" only when a location preference exists but the cue is weak.
 - If a field is not present or uncertain, return null for that field.
 - Do not invent facts. Only extract what is supported by the query.
+- Return category=null for generic words like "property", "properties", or "real estate"; those mean all categories, not a specific category filter.
 - Use preferredRoi for qualitative ROI hints without an explicit number.
 - Map "good roi", "high roi", or "strong roi" to preferredRoi=12.
 - Map "very high roi" to preferredRoi=15.
@@ -226,6 +230,7 @@ const hasStructuredOutput = (value: AIRecommendationExtraction): boolean =>
     value.category ||
     value.location?.value ||
     value.maxPrice !== undefined ||
+    value.preferredPrice !== undefined ||
     value.minPrice !== undefined ||
     value.bedrooms !== undefined ||
     value.bathrooms !== undefined ||

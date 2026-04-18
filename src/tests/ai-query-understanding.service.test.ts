@@ -15,6 +15,7 @@ test("returns validated AI extraction for a structured Nepal property brief", as
           confidence: 0.86,
         },
         maxPrice: 30000000,
+        preferredPrice: null,
         minPrice: null,
         bedrooms: 2,
         bathrooms: null,
@@ -58,6 +59,7 @@ test("accepts multilingual briefs and returns normalized Latin-script extraction
           confidence: 0.9,
         },
         maxPrice: 20000000,
+        preferredPrice: null,
         minPrice: null,
         bedrooms: null,
         bathrooms: null,
@@ -85,6 +87,57 @@ test("accepts multilingual briefs and returns normalized Latin-script extraction
   assert.equal(result?.extraction.maxPrice, 20000000);
 });
 
+test("supports preferred price extraction for around/about budget language", async () => {
+  let capturedSystemPrompt = "";
+
+  const service = new AIQueryUnderstandingService({
+    enabled: true,
+    apiKey: "test-key",
+    requestChatCompletion: async (payload) => {
+      capturedSystemPrompt =
+        payload.messages.find((message) => message.role === "system")?.content ||
+        "";
+
+      return JSON.stringify({
+        category: "land",
+        location: {
+          value: "Bafal",
+          mode: "nearby",
+          confidence: 0.88,
+        },
+        maxPrice: null,
+        preferredPrice: 20000000,
+        minPrice: null,
+        bedrooms: null,
+        bathrooms: null,
+        parking: null,
+        furnished: null,
+        minArea: null,
+        preferredArea: null,
+        minRoi: null,
+        preferredRoi: null,
+        maxDistanceFromHighway: null,
+        landmarkPreference: null,
+        status: null,
+        confidence: 0.92,
+      });
+    },
+  });
+
+  const result = await service.extractRecommendationQuery(
+    "land around bafal around 2cr",
+  );
+
+  assert.equal(result?.extraction.maxPrice, undefined);
+  assert.equal(result?.extraction.preferredPrice, 20000000);
+  assert.match(capturedSystemPrompt, /use preferredPrice for target language/i);
+  assert.match(capturedSystemPrompt, /compact forms like 2cr/i);
+  assert.match(
+    capturedSystemPrompt,
+    /category=null for generic words like "property"/i,
+  );
+});
+
 test("sends Nepal land-unit and NPR conversion rules to the AI model", async () => {
   let capturedSystemPrompt = "";
 
@@ -100,6 +153,7 @@ test("sends Nepal land-unit and NPR conversion rules to the AI model", async () 
         category: null,
         location: null,
         maxPrice: 20000000,
+        preferredPrice: null,
         minPrice: null,
         bedrooms: null,
         bathrooms: null,
@@ -148,6 +202,7 @@ test("sends qualitative ROI and highway mapping rules to the AI model", async ()
           confidence: 0.9,
         },
         maxPrice: null,
+        preferredPrice: null,
         minPrice: null,
         bedrooms: null,
         bathrooms: null,
@@ -198,6 +253,7 @@ test("sends generalized Nepal location-understanding rules to the AI model", asy
           confidence: 0.89,
         },
         maxPrice: null,
+        preferredPrice: null,
         minPrice: null,
         bedrooms: null,
         bathrooms: null,
@@ -260,6 +316,7 @@ test("sends multilingual and Latin-script normalization rules to the AI model", 
           confidence: 0.9,
         },
         maxPrice: 20000000,
+        preferredPrice: null,
         minPrice: null,
         bedrooms: null,
         bathrooms: null,
