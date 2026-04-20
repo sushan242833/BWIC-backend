@@ -15,6 +15,7 @@ import {
   UpdatedAt,
 } from "sequelize-typescript";
 import { Optional } from "sequelize";
+import { Favorite } from "@models/favorite.model";
 import { PasswordResetToken } from "@models/password-reset-token.model";
 import { UserRecommendationSettings } from "@models/user-recommendation-settings.model";
 
@@ -78,6 +79,9 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
 
   @HasMany(() => PasswordResetToken)
   passwordResetTokens!: PasswordResetToken[];
+
+  @HasMany(() => Favorite)
+  favorites!: Favorite[];
 
   @HasOne(() => UserRecommendationSettings)
   recommendationSettings?: UserRecommendationSettings;

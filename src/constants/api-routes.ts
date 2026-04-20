@@ -6,6 +6,7 @@ export const API_ROUTES = {
   auth: withApiBasePath("/auth"),
   user: withApiBasePath("/user"),
   properties: withApiBasePath("/properties"),
+  favorites: withApiBasePath("/favorites"),
   recommendations: withApiBasePath("/recommendations"),
   categories: withApiBasePath("/categories"),
   locations: withApiBasePath("/locations"),

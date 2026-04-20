@@ -7,6 +7,7 @@ import {
   PrimaryKey,
   ForeignKey,
   BelongsTo,
+  HasMany,
   CreatedAt,
   UpdatedAt,
 } from "sequelize-typescript";
@@ -17,6 +18,7 @@ import {
 } from "@constants/property";
 
 import { Category } from "./category.model";
+import { Favorite } from "./favorite.model";
 
 export interface PropertyAttributes {
   id: number;
@@ -67,6 +69,9 @@ export class Property extends Model<
 
   @BelongsTo(() => Category)
   category!: Category;
+
+  @HasMany(() => Favorite)
+  favorites!: Favorite[];
 
   @Column({ type: DataType.STRING, allowNull: false })
   location!: string;

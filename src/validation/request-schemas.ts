@@ -169,6 +169,8 @@ export const recommendationDetailParamSchema = z.object({
   propertyId: positiveIntParam("propertyId"),
 });
 
+export const favoritePropertyParamSchema = recommendationDetailParamSchema;
+
 export const createCategorySchema = z.object({
   name: trimmedString("name"),
 });
