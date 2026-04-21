@@ -34,13 +34,25 @@ export interface UserAttributes {
   passwordHash: string;
   role: UserRole;
   isActive: boolean;
+  isEmailVerified: boolean;
+  emailVerificationOtp?: string | null;
+  emailVerificationOtpExpiresAt?: Date | null;
+  otpAttempts: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export type UserCreationAttributes = Optional<
   UserAttributes,
-  "id" | "role" | "isActive" | "createdAt" | "updatedAt"
+  | "id"
+  | "role"
+  | "isActive"
+  | "isEmailVerified"
+  | "emailVerificationOtp"
+  | "emailVerificationOtpExpiresAt"
+  | "otpAttempts"
+  | "createdAt"
+  | "updatedAt"
 >;
 
 @Table({
@@ -76,6 +88,27 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
   @Default(true)
   @Column(DataType.BOOLEAN)
   isActive!: boolean;
+
+  @AllowNull(false)
+  @Default(false)
+  @Column(DataType.BOOLEAN)
+  isEmailVerified!: boolean;
+
+  @AllowNull(true)
+  @Column(DataType.STRING(64))
+  emailVerificationOtp?: string | null;
+
+  @AllowNull(true)
+  @Column(DataType.DATE)
+  emailVerificationOtpExpiresAt?: Date | null;
+
+  @AllowNull(false)
+  @Default(0)
+  @Column({
+    type: DataType.INTEGER,
+    field: "emailVerificationOtpAttempts",
+  })
+  otpAttempts!: number;
 
   @HasMany(() => PasswordResetToken)
   passwordResetTokens!: PasswordResetToken[];

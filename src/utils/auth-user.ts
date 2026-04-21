@@ -7,6 +7,7 @@ export const serializeAuthUser = (user: User): AuthUserDto => ({
   email: user.email,
   role: user.role,
   isActive: user.isActive,
+  isEmailVerified: user.isEmailVerified,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });

@@ -269,6 +269,17 @@ export const loginSchema = z.object({
   scope: z.preprocess(firstString, z.enum(USER_ROLES).optional()),
 });
 
+export const verifyEmailSchema = z.object({
+  email: emailString("email"),
+  otp: trimmedString("otp").pipe(
+    z.string().regex(/^\d{6}$/, "otp must be a 6-digit numeric code"),
+  ),
+});
+
+export const resendOtpSchema = z.object({
+  email: emailString("email"),
+});
+
 export const forgotPasswordSchema = z.object({
   email: emailString("email"),
 });

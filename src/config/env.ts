@@ -120,11 +120,11 @@ const rawEnvSchema = z
     DB_USER: optionalStringSchema,
     DB_PASSWORD: optionalStringSchema,
     DB_LOGGING: booleanSchema("DB_LOGGING"),
-    SMTP_HOST: optionalStringSchema,
-    SMTP_PORT: positiveIntSchema("SMTP_PORT", 587).optional(),
-    SMTP_SECURE: booleanSchema("SMTP_SECURE"),
-    SMTP_USER: optionalStringSchema,
-    SMTP_PASS: optionalStringSchema,
+    EMAIL_HOST: optionalStringSchema,
+    EMAIL_PORT: positiveIntSchema("EMAIL_PORT", 587).optional(),
+    EMAIL_SECURE: booleanSchema("EMAIL_SECURE"),
+    EMAIL_USER: optionalStringSchema,
+    EMAIL_PASS: optionalStringSchema,
     MAIL_FROM: optionalStringSchema,
     FROM_EMAIL: optionalStringSchema,
     NOTIFY_EMAIL: optionalEmailSchema("NOTIFY_EMAIL"),
@@ -161,9 +161,9 @@ const rawEnvSchema = z
 
     const hasMailFrom = Boolean(env.MAIL_FROM || env.FROM_EMAIL);
     const hasMailConfig =
-      Boolean(env.SMTP_HOST) &&
-      Boolean(env.SMTP_USER) &&
-      Boolean(env.SMTP_PASS) &&
+      Boolean(env.EMAIL_HOST) &&
+      Boolean(env.EMAIL_USER) &&
+      Boolean(env.EMAIL_PASS) &&
       hasMailFrom;
 
     if (env.NOTIFY_EMAIL && !hasMailConfig) {
@@ -171,7 +171,7 @@ const rawEnvSchema = z
         code: z.ZodIssueCode.custom,
         path: ["NOTIFY_EMAIL"],
         message:
-          "NOTIFY_EMAIL requires SMTP_HOST, SMTP_USER, SMTP_PASS, and MAIL_FROM to be configured.",
+          "NOTIFY_EMAIL requires EMAIL_HOST, EMAIL_USER, EMAIL_PASS, and MAIL_FROM to be configured.",
       });
     }
 
@@ -241,9 +241,9 @@ const rawEnvSchema = z
     if (!hasMailConfig) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["SMTP_HOST"],
+        path: ["EMAIL_HOST"],
         message:
-          "SMTP_HOST, SMTP_USER, SMTP_PASS, and MAIL_FROM are required in production.",
+          "EMAIL_HOST, EMAIL_USER, EMAIL_PASS, and MAIL_FROM are required in production.",
       });
     }
 
@@ -366,7 +366,6 @@ const corsAllowedOrigins = (
   rawEnv.FRONTEND_ORIGIN || [frontendUrl]
 ).map(normalizeOrigin);
 
-const smtpPort = rawEnv.SMTP_PORT ?? 587;
 const cookieSecure =
   rawEnv.AUTH_COOKIE_SECURE ?? rawEnv.NODE_ENV === "production";
 const mailFrom = rawEnv.MAIL_FROM || rawEnv.FROM_EMAIL;
@@ -407,15 +406,18 @@ const runtimeEnv = parseWithSchema(runtimeEnvSchema, {
     isConfigured: Boolean(rawEnv.OPENAI_API_KEY),
   },
   mail: {
-    host: rawEnv.SMTP_HOST,
-    port: smtpPort,
-    secure: rawEnv.SMTP_SECURE ?? smtpPort === 465,
-    user: rawEnv.SMTP_USER,
-    pass: rawEnv.SMTP_PASS,
+    host: rawEnv.EMAIL_HOST,
+    port: rawEnv.EMAIL_PORT ?? 587,
+    secure: rawEnv.EMAIL_SECURE ?? (rawEnv.EMAIL_PORT ?? 587) === 465,
+    user: rawEnv.EMAIL_USER,
+    pass: rawEnv.EMAIL_PASS,
     from: mailFrom,
     notifyEmail: rawEnv.NOTIFY_EMAIL,
     isConfigured: Boolean(
-      rawEnv.SMTP_HOST && rawEnv.SMTP_USER && rawEnv.SMTP_PASS && mailFrom,
+      rawEnv.EMAIL_HOST &&
+        rawEnv.EMAIL_USER &&
+        rawEnv.EMAIL_PASS &&
+        mailFrom,
     ),
   },
   auth: {

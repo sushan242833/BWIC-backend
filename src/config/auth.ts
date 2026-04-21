@@ -8,6 +8,13 @@ export const authConfig = {
   cookieMaxAgeMs: daysToMilliseconds(7),
   rememberCookieMaxAgeMs: daysToMilliseconds(30),
   bcryptSaltRounds: 12,
+  emailVerification: {
+    expiryMinutes: 10,
+    resendCooldownSeconds: 60,
+    maxAttemptsPerWindow: 5,
+    attemptsWindowMinutes: 15,
+    maxVerifyAttempts: 5,
+  },
   passwordReset: {
     expiryMinutes: 20,
     resendCooldownSeconds: 60,

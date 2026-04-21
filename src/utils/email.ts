@@ -13,7 +13,7 @@ let transporter: nodemailer.Transporter | null = null;
 const assertEmailConfig = () => {
   if (!env.mail.isConfigured) {
     throw new Error(
-      "SMTP email configuration is incomplete. Check SMTP_HOST, SMTP_USER, SMTP_PASS, and MAIL_FROM.",
+      "Email configuration is incomplete. Check EMAIL_HOST, EMAIL_USER, EMAIL_PASS, and MAIL_FROM.",
     );
   }
 };

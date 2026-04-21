@@ -2,16 +2,18 @@ import { NextFunction, Request, Response } from "express";
 import { Op } from "sequelize";
 import authConfig from "@config/auth";
 import sequelize from "@config/config";
-import env from "@config/env";
 import {
   ForgotPasswordRequestDto,
   LoginRequestDto,
   RegisterRequestDto,
+  ResendOtpRequestDto,
   ResetPasswordRequestDto,
+  VerifyEmailRequestDto,
   ValidateResetTokenQueryDto,
 } from "@dto/auth.dto";
 import { PasswordResetToken } from "@models/password-reset-token.model";
 import { USER_ROLE, User } from "@models/user.model";
+import authService from "@services/auth.service";
 import { serializeAuthUser } from "@utils/auth-user";
 import { buildPasswordResetEmailTemplate } from "@utils/email-templates/password-reset-email";
 import { sendEmail } from "@utils/email";
@@ -32,8 +34,6 @@ import {
 import { sendSuccess } from "@utils/api-response";
 import { AppError } from "../middleware/error.middleware";
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
-
 export class AuthController {
   private buildToken(user: User) {
     return signAuthToken({
@@ -46,30 +46,12 @@ export class AuthController {
   async register(req: Request, res: Response, next: NextFunction) {
     try {
       const request = req.body as RegisterRequestDto;
-      const normalizedEmail = normalizeEmail(request.email);
-
-      const existingUser = await User.findOne({
-        where: { email: normalizedEmail },
-      });
-
-      if (existingUser) {
-        return next(new AppError("An account with this email already exists", 409));
-      }
-
-      const user = await User.create({
-        fullName: request.fullName.trim(),
-        email: normalizedEmail,
-        passwordHash: await hashPassword(request.password),
-        role: USER_ROLE.USER,
-        isActive: true,
-      });
-
-      setAuthCookie(res, this.buildToken(user), request.rememberMe);
+      const response = await authService.register(request);
 
       return sendSuccess(res, {
         statusCode: 201,
-        message: "Account created successfully",
-        data: serializeAuthUser(user),
+        message: "OTP sent to your email. Please verify your account.",
+        data: response,
       });
     } catch (error) {
       next(error);
@@ -79,7 +61,7 @@ export class AuthController {
   async login(req: Request, res: Response, next: NextFunction) {
     try {
       const request = req.body as LoginRequestDto;
-      const normalizedEmail = normalizeEmail(request.email);
+      const normalizedEmail = authService.normalizeEmail(request.email);
 
       const user = await User.findOne({
         where: { email: normalizedEmail },
@@ -102,6 +84,12 @@ export class AuthController {
         return next(new AppError("Invalid email or password", 401));
       }
 
+      if (!user.isEmailVerified) {
+        return next(
+          new AppError("Please verify your email before logging in.", 403),
+        );
+      }
+
       if (
         request.scope === USER_ROLE.ADMIN &&
         user.role !== USER_ROLE.ADMIN
@@ -116,6 +104,34 @@ export class AuthController {
       return sendSuccess(res, {
         message: "Login successful",
         data: serializeAuthUser(user),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const request = req.body as VerifyEmailRequestDto;
+      await authService.verifyEmail(request);
+
+      return sendSuccess(res, {
+        message: "Email verified successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resendOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      const request = req.body as ResendOtpRequestDto;
+      const requesterIp = req.ip || req.socket.remoteAddress || "unknown";
+      const response = await authService.resendOtp(request, requesterIp);
+
+      return sendSuccess(res, {
+        message: "A new OTP has been sent to your email.",
+        data: response,
       });
     } catch (error) {
       next(error);
@@ -148,7 +164,7 @@ export class AuthController {
   async forgotPassword(req: Request, res: Response, next: NextFunction) {
     try {
       const request = req.body as ForgotPasswordRequestDto;
-      const normalizedEmail = normalizeEmail(request.email);
+      const normalizedEmail = authService.normalizeEmail(request.email);
       const requesterIp = req.ip || req.socket.remoteAddress || "unknown";
 
       assertRateLimit({

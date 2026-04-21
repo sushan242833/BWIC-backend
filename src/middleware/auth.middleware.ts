@@ -44,6 +44,17 @@ const attachAuthenticatedUser = async (
       return;
     }
 
+    if (!user.isEmailVerified) {
+      clearAuthCookie(res);
+      if (strict) {
+        throw new AppError(
+          "Please verify your email before accessing this resource.",
+          403,
+        );
+      }
+      return;
+    }
+
     req.user = serializeAuthUser(user);
   } catch (error) {
     clearAuthCookie(res);

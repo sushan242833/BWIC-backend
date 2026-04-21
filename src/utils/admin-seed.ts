@@ -58,6 +58,8 @@ export const seedInitialAdminUser = async ({
       passwordHash,
       role: USER_ROLE.ADMIN satisfies UserRole,
       isActive: true,
+      isEmailVerified: true,
+      emailVerificationOtpAttempts: 0,
       createdAt: now,
       updatedAt: now,
     },

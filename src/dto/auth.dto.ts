@@ -7,11 +7,29 @@ export interface RegisterRequestDto {
   rememberMe?: boolean;
 }
 
+export interface RegisterResponseDto {
+  email: string;
+}
+
 export interface LoginRequestDto {
   email: string;
   password: string;
   rememberMe?: boolean;
   scope?: UserRole;
+}
+
+export interface VerifyEmailRequestDto {
+  email: string;
+  otp: string;
+}
+
+export interface ResendOtpRequestDto {
+  email: string;
+}
+
+export interface ResendOtpResponseDto {
+  email: string;
+  resendCooldownSeconds: number;
 }
 
 export interface ForgotPasswordRequestDto {
@@ -43,6 +61,7 @@ export interface AuthUserDto {
   email: string;
   role: UserRole;
   isActive: boolean;
+  isEmailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
