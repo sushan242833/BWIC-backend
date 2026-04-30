@@ -7,6 +7,7 @@ import {
   fn,
   where as sequelizeWhere,
 } from "sequelize";
+import sequelize from "@config/config";
 import {
   normalizePropertyStatus,
   PROPERTY_DEFAULT_PAGE_SIZE,
@@ -16,6 +17,7 @@ import {
 import { buildLocationSearchProfile } from "@utils/nlp/location-parser";
 
 export const propertySortValues = [
+  "random",
   "price_asc",
   "price_desc",
   "roi_desc",
@@ -167,16 +169,33 @@ export const buildRecommendationPropertyWhere = (
   };
 };
 
-const propertyOrderMap: Record<PropertySortValue, Order> = {
+const propertyOrderMap: Record<Exclude<PropertySortValue, "random">, Order> = {
   price_asc: [["price", "ASC"]],
   price_desc: [["price", "DESC"]],
   roi_desc: [["roi", "DESC"]],
   newest: [["createdAt", "DESC"]],
 };
 
+const resolveRandomOrderFunctionName = () => {
+  switch (sequelize.getDialect()) {
+    case "mysql":
+    case "mariadb":
+      return "RAND";
+    case "postgres":
+    default:
+      return "RANDOM";
+  }
+};
+
 export const resolvePropertyOrder = (
   sort: PropertySortValue = "newest",
-): Order => propertyOrderMap[sort] || propertyOrderMap.newest;
+): Order => {
+  if (sort === "random") {
+    return [sequelize.fn(resolveRandomOrderFunctionName())];
+  }
+
+  return propertyOrderMap[sort] || propertyOrderMap.newest;
+};
 
 export const normalizePropertyPagination = ({
   page,
