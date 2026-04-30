@@ -20,6 +20,7 @@ import { statsRouter } from "@routes/stats.routes";
 import { userRouter } from "@routes/user.route";
 import env from "@config/env";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
+import { assertAuthUserSchema } from "./database/schema-check";
 
 const app = express();
 
@@ -68,7 +69,8 @@ app.use(errorHandler);
 
 sequelize
   .authenticate()
-  .then(() => {
+  .then(async () => {
+    await assertAuthUserSchema();
     app.listen(env.port, () => {
       console.log(`Server running at ${env.appBaseUrl}`);
     });

@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { ZodError, ZodTypeAny } from "zod";
-import { AppError } from "../middleware/error.middleware";
+import { ApiErrorDetail, AppError } from "../middleware/error.middleware";
 
 type RequestSchema = {
   body?: ZodTypeAny;
@@ -8,13 +8,11 @@ type RequestSchema = {
   query?: ZodTypeAny;
 };
 
-const buildErrorResponse = (error: ZodError) => ({
-  message: "Validation failed",
-  errors: error.issues.map((issue) => ({
+const buildErrorResponse = (error: ZodError): ApiErrorDetail[] =>
+  error.issues.map((issue) => ({
     path: issue.path.join("."),
     message: issue.message,
-  })),
-});
+  }));
 
 const replaceObjectValues = (
   target: Record<string, unknown>,
@@ -53,10 +51,7 @@ export const validateRequest =
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const validationError = buildErrorResponse(error);
-        return next(
-          new AppError(validationError.message, 400, validationError.errors),
-        );
+        return next(new AppError("Validation failed", 400, buildErrorResponse(error)));
       }
 
       next(error);

@@ -13,6 +13,7 @@ export const PROPERTY_IMAGE_MIME_TYPES = [
   "image/jpg",
   "image/png",
   "image/jpeg",
+  "image/webp",
 ] as const;
 
 export const PROPERTY_DEFAULT_PAGE_SIZE = 9;

@@ -41,12 +41,12 @@ export class AuthService {
     if (existingUser) {
       if (!existingUser.isEmailVerified) {
         throw new AppError(
-          "An account with this email already exists but is not verified. Please verify your email or request a new OTP.",
+          "An account with this email already exists. Please verify your email.",
           409,
         );
       }
 
-      throw new AppError("An account with this email already exists", 409);
+      throw new AppError("An account with this email already exists.", 409);
     }
 
     const passwordHash = await hashPassword(request.password);
@@ -99,7 +99,10 @@ export class AuthService {
       });
 
       if (!user) {
-        throw new AppError("User not found", 404);
+        throw new AppError(
+          "No pending email verification was found for this email.",
+          400,
+        );
       }
 
       if (user.isEmailVerified) {
@@ -146,7 +149,12 @@ export class AuthService {
         }
 
         await user.save({ transaction });
-        throw new AppError("Invalid OTP", 400);
+        throw new AppError("Invalid OTP", 400, [
+          {
+            path: "otp",
+            message: "Enter the latest 6-digit code sent to your email.",
+          },
+        ]);
       }
 
       user.isEmailVerified = true;
@@ -186,7 +194,10 @@ export class AuthService {
       });
 
       if (!user) {
-        throw new AppError("User not found", 404);
+        throw new AppError(
+          "No pending email verification was found for this email.",
+          400,
+        );
       }
 
       if (user.isEmailVerified) {

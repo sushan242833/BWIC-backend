@@ -96,6 +96,27 @@ test("register stores a hashed OTP with expiry and sends the email", async () =>
   assert.match((sentEmail as { html: string }).html, /482913/);
 });
 
+test("register rejects an existing email address", async () => {
+  patchMethod(User, "findOne", async () => ({
+    id: 4,
+    isEmailVerified: true,
+  }));
+
+  await assert.rejects(
+    authService.register({
+      fullName: "Alice Johnson",
+      email: "alice@example.com",
+      password: "StrongPassword123!",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.message, "An account with this email already exists.");
+      return true;
+    },
+  );
+});
+
 test("verify email marks the user as verified and clears OTP state", async () => {
   let saveCalls = 0;
   const user = {
@@ -163,6 +184,51 @@ test("expired OTP is rejected and cleared", async () => {
   assert.equal(user.emailVerificationOtp, null);
   assert.equal(user.emailVerificationOtpExpiresAt, null);
   assert.equal(user.otpAttempts, 0);
+  assert.equal(saveCalls, 1);
+});
+
+test("invalid OTP is rejected without exposing technical details", async () => {
+  let saveCalls = 0;
+  const user = {
+    email: "invalid-otp@example.com",
+    isEmailVerified: false,
+    emailVerificationOtp: "expected-hash",
+    emailVerificationOtpExpiresAt: new Date("2099-01-01T00:00:00.000Z"),
+    otpAttempts: 0,
+    async save() {
+      saveCalls += 1;
+      return this;
+    },
+  } as unknown as User;
+
+  createTransactionStub();
+  patchMethod(User, "findOne", async () => user);
+  patchMethod(
+    emailVerificationModule,
+    "hashEmailVerificationOtp",
+    () => "wrong-hash",
+  );
+
+  await assert.rejects(
+    authService.verifyEmail({
+      email: "invalid-otp@example.com",
+      otp: "111111",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.statusCode, 400);
+      assert.equal(error.message, "Invalid OTP");
+      assert.deepEqual(error.details, [
+        {
+          path: "otp",
+          message: "Enter the latest 6-digit code sent to your email.",
+        },
+      ]);
+      return true;
+    },
+  );
+
+  assert.equal(user.otpAttempts, 1);
   assert.equal(saveCalls, 1);
 });
 

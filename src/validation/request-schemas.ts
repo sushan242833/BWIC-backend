@@ -6,6 +6,7 @@ import {
 } from "@constants/contact";
 import {
   normalizePropertyStatus,
+  PROPERTY_IMAGE_UPLOAD_LIMIT,
   PROPERTY_AREA_NEPALI_FORMAT_HINT,
   PROPERTY_AREA_NEPALI_PATTERN,
   PROPERTY_STATUSES,
@@ -30,6 +31,9 @@ const firstString = (value: unknown): unknown => {
 
   return value;
 };
+
+const strictObject = <T extends z.ZodRawShape>(shape: T) =>
+  z.object(shape).strict();
 
 const trimmedString = (label: string) =>
   z
@@ -161,23 +165,23 @@ const positiveIntParam = (label: string) =>
     .transform((value) => value.trim())
     .pipe(z.string().regex(/^\d+$/, `${label} must be a positive integer`));
 
-export const idParamSchema = z.object({
+export const idParamSchema = strictObject({
   id: positiveIntParam("id"),
 });
 
-export const recommendationDetailParamSchema = z.object({
+export const recommendationDetailParamSchema = strictObject({
   propertyId: positiveIntParam("propertyId"),
 });
 
 export const favoritePropertyParamSchema = recommendationDetailParamSchema;
 
-export const createCategorySchema = z.object({
+export const createCategorySchema = strictObject({
   name: trimmedString("name"),
 });
 
 export const updateCategorySchema = createCategorySchema;
 
-export const createContactSchema = z.object({
+export const createContactSchema = strictObject({
   name: trimmedString("name"),
   email: trimmedString("email").pipe(
     z.string().email("email must be a valid email address"),
@@ -253,7 +257,7 @@ const strongPasswordString = (label: string) =>
       .refine(isStrongPassword, STRONG_PASSWORD_MESSAGE),
   );
 
-export const registerSchema = z.object({
+export const registerSchema = strictObject({
   fullName: trimmedString("fullName").pipe(
     z.string().min(2, "fullName must be at least 2 characters long"),
   ),
@@ -262,34 +266,34 @@ export const registerSchema = z.object({
   rememberMe: optionalBoolean(),
 });
 
-export const loginSchema = z.object({
+export const loginSchema = strictObject({
   email: emailString("email"),
   password: passwordString(),
   rememberMe: optionalBoolean(),
   scope: z.preprocess(firstString, z.enum(USER_ROLES).optional()),
 });
 
-export const verifyEmailSchema = z.object({
+export const verifyEmailSchema = strictObject({
   email: emailString("email"),
   otp: trimmedString("otp").pipe(
     z.string().regex(/^\d{6}$/, "otp must be a 6-digit numeric code"),
   ),
 });
 
-export const resendOtpSchema = z.object({
+export const resendOtpSchema = strictObject({
   email: emailString("email"),
 });
 
-export const forgotPasswordSchema = z.object({
+export const forgotPasswordSchema = strictObject({
   email: emailString("email"),
 });
 
-export const validateResetTokenQuerySchema = z.object({
+export const validateResetTokenQuerySchema = strictObject({
   token: trimmedString("token"),
 });
 
 export const resetPasswordSchema = z
-  .object({
+  .strictObject({
     token: trimmedString("token"),
     newPassword: strongPasswordString("newPassword"),
     confirmPassword: strongPasswordString("confirmPassword"),
@@ -304,16 +308,16 @@ export const resetPasswordSchema = z
     }
   });
 
-export const autocompleteQuerySchema = z.object({
+export const autocompleteQuerySchema = strictObject({
   q: optionalTrimmedString(),
 });
 
-export const placeDetailsQuerySchema = z.object({
+export const placeDetailsQuerySchema = strictObject({
   placeId: trimmedString("placeId"),
 });
 
 export const propertyListQuerySchema = z
-  .object({
+  .strictObject({
     search: optionalTrimmedString(),
     location: optionalTrimmedString(),
     categoryId: optionalNumber("categoryId", 1),
@@ -339,7 +343,7 @@ export const propertyListQuerySchema = z
     });
   });
 
-const propertyBodySchema = z.object({
+const propertyBodySchema = strictObject({
   title: trimmedString("title"),
   categoryId: z.preprocess(
     (value) => {
@@ -358,10 +362,46 @@ const propertyBodySchema = z.object({
       .positive("categoryId must be a positive integer"),
   ),
   location: trimmedString("location"),
-  price: requiredNumber("price"),
+  price: z.preprocess(
+    (value) => {
+      const candidate = firstString(value);
+
+      if (typeof candidate === "number") {
+        return candidate;
+      }
+
+      if (typeof candidate === "string") {
+        const parsed = Number.parseFloat(candidate.replace(/,/g, "").trim());
+        return Number.isNaN(parsed) ? candidate : parsed;
+      }
+
+      return candidate;
+    },
+    z
+      .number({ error: "price must be a number" })
+      .positive("price must be greater than 0"),
+  ),
   roi: requiredNumber("roi"),
   status: propertyStatusSchema,
-  area: requiredNumber("area"),
+  area: z.preprocess(
+    (value) => {
+      const candidate = firstString(value);
+
+      if (typeof candidate === "number") {
+        return candidate;
+      }
+
+      if (typeof candidate === "string") {
+        const parsed = Number.parseFloat(candidate.replace(/,/g, "").trim());
+        return Number.isNaN(parsed) ? candidate : parsed;
+      }
+
+      return candidate;
+    },
+    z
+      .number({ error: "area must be a number" })
+      .positive("area must be greater than 0"),
+  ),
   areaNepali: optionalAreaNepaliSchema,
   distanceFromHighway: optionalNumber("distanceFromHighway"),
   description: trimmedString("description"),
@@ -370,11 +410,15 @@ const propertyBodySchema = z.object({
 export const createPropertySchema = propertyBodySchema;
 
 export const updatePropertySchema = propertyBodySchema.extend({
-  existingImages: optionalStringArray(),
+  existingImages: optionalStringArray().refine(
+    (value) =>
+      value === undefined || value.length <= PROPERTY_IMAGE_UPLOAD_LIMIT,
+    `existingImages can include up to ${PROPERTY_IMAGE_UPLOAD_LIMIT} images`,
+  ),
 });
 
 const recommendationPreferencesSchema = z
-  .object({
+  .strictObject({
     categoryId: optionalInteger("preferences.categoryId"),
     category: optionalTrimmedString(),
     location: optionalTrimmedString(),
@@ -403,12 +447,12 @@ const recommendationPreferencesSchema = z
     }
   });
 
-const recommendationPaginationSchema = z.object({
+const recommendationPaginationSchema = strictObject({
   page: optionalNumber("page", 1),
   limit: optionalNumber("limit", 1),
-  });
+});
 
-const recommendationMustHaveSchema = z.object({
+const recommendationMustHaveSchema = strictObject({
   categoryId: optionalInteger("mustHave.categoryId"),
   category: optionalTrimmedString(),
   location: optionalTrimmedString(),
@@ -420,7 +464,7 @@ const recommendationMustHaveSchema = z.object({
 });
 
 export const recommendationQuerySchema = z
-  .object({
+  .strictObject({
     brief: optionalTrimmedString(),
     categoryId: optionalInteger("categoryId"),
     category: optionalTrimmedString(),
@@ -469,7 +513,7 @@ export const recommendationQuerySchema = z
   });
 
 export const recommendationBodySchema = z
-  .object({
+  .strictObject({
     brief: optionalTrimmedString(),
     mustHave: recommendationMustHaveSchema.optional(),
     preferences: recommendationPreferencesSchema.optional(),
@@ -477,7 +521,7 @@ export const recommendationBodySchema = z
   .merge(recommendationPaginationSchema);
 
 export const recommendationSettingsUpdateSchema = z
-  .object({
+  .strictObject({
     location: requiredNumber("location"),
     price: requiredNumber("price"),
     area: requiredNumber("area"),

@@ -86,16 +86,23 @@ export const parseExistingImagesInput = (value: unknown): string[] => {
 
 export const assertValidPropertyImageCount = (images: string[]) => {
   if (images.length > PROPERTY_IMAGE_UPLOAD_LIMIT) {
-    throw new AppError(
-      `You can only upload up to ${PROPERTY_IMAGE_UPLOAD_LIMIT} images`,
-      400,
-    );
+    throw new AppError("Validation failed", 400, [
+      {
+        path: "images",
+        message: `You can only upload up to ${PROPERTY_IMAGE_UPLOAD_LIMIT} images`,
+      },
+    ]);
   }
 };
 
 export const requirePropertyImages = (images: string[]) => {
   if (images.length === 0) {
-    throw new AppError("At least one image is required", 400);
+    throw new AppError("Validation failed", 400, [
+      {
+        path: "images",
+        message: "At least one image is required",
+      },
+    ]);
   }
 };
 

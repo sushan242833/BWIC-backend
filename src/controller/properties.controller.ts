@@ -28,6 +28,21 @@ import { AppError } from "../middleware/error.middleware";
 import { sendSuccess } from "@utils/api-response";
 
 export class PropertyController {
+  private async assertCategoryExists(categoryId: number): Promise<void> {
+    const category = await Category.findByPk(categoryId, {
+      attributes: ["id"],
+    });
+
+    if (!category) {
+      throw new AppError("Validation failed", 400, [
+        {
+          path: "categoryId",
+          message: "Selected category does not exist",
+        },
+      ]);
+    }
+  }
+
   private async findPropertyWithCategory(id: number | string) {
     return Property.findByPk(id, {
       attributes: { exclude: ["created_at", "updated_at"] },
@@ -58,35 +73,33 @@ export class PropertyController {
     };
   }
 
-  private parseNumericValue(raw: string | number): number {
-    if (typeof raw === "number") return raw;
-    const normalized = raw.replace(/,/g, "").trim();
-    const parsed = Number.parseFloat(normalized);
-    if (Number.isNaN(parsed)) {
-      throw new Error(`Invalid numeric value: ${raw}`);
-    }
-    return parsed;
-  }
-
-  private validateNumericFields(request: CreatePropertyDto | UpdatePropertyDto) {
-    const price = this.parseNumericValue(request.price);
-    const roi = this.parseNumericValue(request.roi);
-    const area = this.parseNumericValue(request.area);
-
-    if (price < 0 || roi < 0 || area < 0) {
-      throw new Error("Numeric fields must be non-negative");
-    }
-  }
-
   private parseDistanceFromHighway(
     raw: number | string | undefined,
   ): number | undefined {
     if (raw === undefined) return undefined;
     if (typeof raw === "string" && raw.trim() === "") return undefined;
 
-    const parsed = this.parseNumericValue(raw);
+    const parsed =
+      typeof raw === "number"
+        ? raw
+        : Number.parseFloat(raw.replace(/,/g, "").trim());
+
+    if (!Number.isFinite(parsed)) {
+      throw new AppError("Validation failed", 400, [
+        {
+          path: "distanceFromHighway",
+          message: "distanceFromHighway must be a number",
+        },
+      ]);
+    }
+
     if (parsed < 0) {
-      throw new Error("Distance from highway cannot be negative");
+      throw new AppError("Validation failed", 400, [
+        {
+          path: "distanceFromHighway",
+          message: "distanceFromHighway cannot be negative",
+        },
+      ]);
     }
 
     return parsed;
@@ -109,8 +122,7 @@ export class PropertyController {
               id: category.id,
               name: category.name,
             })),
-          )?.id ??
-          undefined;
+          )?.id ?? undefined;
       }
 
       const resolvedFilters: PropertyListQueryDto = {
@@ -168,8 +180,8 @@ export class PropertyController {
     try {
       const request = req.body as CreatePropertyDto;
       const imageFiles = req.files as Express.Multer.File[];
+      await this.assertCategoryExists(Number(request.categoryId));
       const imagePaths = resolveCreatePropertyImages(imageFiles);
-      this.validateNumericFields(request);
       const distanceFromHighway = this.parseDistanceFromHighway(
         request.distanceFromHighway,
       );
@@ -183,10 +195,10 @@ export class PropertyController {
         location: request.location,
         latitude,
         longitude,
-        price: request.price,
-        roi: request.roi,
+        price: Number(request.price),
+        roi: Number(request.roi),
         status: normalizePropertyStatus(request.status) ?? request.status,
-        area: request.area,
+        area: Number(request.area),
         areaNepali: request.areaNepali,
         distanceFromHighway,
         images: imagePaths,
@@ -240,12 +252,12 @@ export class PropertyController {
         return next(new AppError("Property not found", 404));
       }
 
+      await this.assertCategoryExists(Number(request.categoryId));
       const finalImages = resolveUpdatePropertyImages({
         uploadedFiles: imageFiles,
         existingImagesInput: request.existingImages,
         fallbackImages: property.images,
       });
-      this.validateNumericFields(request);
       const distanceFromHighway = this.parseDistanceFromHighway(
         request.distanceFromHighway,
       );
@@ -269,10 +281,10 @@ export class PropertyController {
         location: request.location,
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
-        price: request.price,
-        roi: request.roi,
+        price: Number(request.price),
+        roi: Number(request.roi),
         status: normalizePropertyStatus(request.status) ?? request.status,
-        area: request.area,
+        area: Number(request.area),
         areaNepali: request.areaNepali,
         distanceFromHighway,
         images: finalImages,

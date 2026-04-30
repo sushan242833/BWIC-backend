@@ -11,6 +11,7 @@ import {
   PROPERTY_IMAGE_MIME_TYPES,
   PROPERTY_IMAGE_UPLOAD_LIMIT,
 } from "@constants/property";
+import { AppError } from "../middleware/error.middleware";
 
 const storage = multer.diskStorage({
   destination: function (req, file, callback) {
@@ -35,7 +36,14 @@ const fileFilter = (
   ) {
     callback(null, true);
   } else {
-    callback(new Error("file format not supported"));
+    callback(
+      new AppError("Validation failed", 400, [
+        {
+          path: "images",
+          message: "Only JPG and PNG images are supported.",
+        },
+      ]),
+    );
   }
 };
 
