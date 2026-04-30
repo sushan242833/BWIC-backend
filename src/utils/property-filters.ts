@@ -26,8 +26,13 @@ export const propertySortValues = [
 
 export type PropertySortValue = (typeof propertySortValues)[number];
 
+export const propertySearchModeValues = ["smart", "plain"] as const;
+
+export type PropertySearchMode = (typeof propertySearchModeValues)[number];
+
 export interface PropertyFilterQuery {
   search?: string;
+  searchMode?: PropertySearchMode;
   location?: string;
   categoryId?: number;
   minPrice?: number;
@@ -271,7 +276,8 @@ const buildPropertyLocationWhere = (
     : undefined;
 };
 
-const PROPERTY_SEARCH_FIELDS = ["title", "location"] as const;
+const PROPERTY_TEXT_SEARCH_FIELDS = ["title", "location", "areaNepali"] as const;
+const PROPERTY_NUMERIC_SEARCH_FIELDS = ["area"] as const;
 
 const PROPERTY_MAIN_TABLE_ALIAS = "Property";
 
@@ -294,27 +300,49 @@ const buildPropertySearchWhere = (
     .split(" ")
     .filter((token) => token.length > 0);
 
-  const phraseConditions: WhereOptions[] = PROPERTY_SEARCH_FIELDS.map((field) =>
-    sequelizeWhere(buildNormalizedLocationExpression(field), {
-      [Op.like]: `%${normalizedSearch}%`,
-    }),
+  const phraseConditions: WhereOptions[] = PROPERTY_TEXT_SEARCH_FIELDS.map(
+    (field) =>
+      sequelizeWhere(buildNormalizedLocationExpression(field), {
+        [Op.like]: `%${normalizedSearch}%`,
+      }),
   );
+
+  if (/^\d+(?:\.\d+)?$/.test(normalizedSearch)) {
+    for (const field of PROPERTY_NUMERIC_SEARCH_FIELDS) {
+      phraseConditions.push(
+        sequelizeWhere(cast(col(`${PROPERTY_MAIN_TABLE_ALIAS}.${field}`), "text"), {
+          [Op.like]: `%${normalizedSearch}%`,
+        }),
+      );
+    }
+  }
 
   const tokenConditions = searchTokens
     .filter((token) => token.length > 1)
     .map<WhereOptions>((token) => {
-      const conditions: WhereOptions[] = PROPERTY_SEARCH_FIELDS.map((field) =>
+      const conditions: WhereOptions[] = PROPERTY_TEXT_SEARCH_FIELDS.map((field) =>
         sequelizeWhere(buildNormalizedLocationExpression(field), {
           [Op.like]: `%${token}%`,
         }),
       );
 
-      if (/^\d+$/.test(token)) {
+      if (/\d/.test(token)) {
         conditions.push(
           sequelizeWhere(cast(col(`${PROPERTY_MAIN_TABLE_ALIAS}.id`), "text"), {
             [Op.like]: `%${token}%`,
           }),
         );
+
+        for (const field of PROPERTY_NUMERIC_SEARCH_FIELDS) {
+          conditions.push(
+            sequelizeWhere(
+              cast(col(`${PROPERTY_MAIN_TABLE_ALIAS}.${field}`), "text"),
+              {
+                [Op.like]: `%${token}%`,
+              },
+            ),
+          );
+        }
       }
 
       return {

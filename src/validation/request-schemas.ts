@@ -13,6 +13,7 @@ import {
 } from "@constants/property";
 import { RECOMMENDATION_WEIGHT_TOTAL } from "@constants/recommendation-weights";
 import {
+  propertySearchModeValues,
   propertySortValues,
   validatePropertyFilterCombinations,
 } from "@utils/property-filters";
@@ -319,6 +320,9 @@ export const placeDetailsQuerySchema = strictObject({
 export const propertyListQuerySchema = z
   .strictObject({
     search: optionalTrimmedString(),
+    searchMode: z
+      .preprocess(firstString, z.enum(propertySearchModeValues).optional())
+      .optional(),
     location: optionalTrimmedString(),
     categoryId: optionalNumber("categoryId", 1),
     minPrice: optionalNumber("minPrice"),

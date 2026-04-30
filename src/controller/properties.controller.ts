@@ -108,10 +108,17 @@ export class PropertyController {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const filters = req.query as unknown as PropertyListQueryDto;
-      const parsedSearch = parsePropertySearchQuery(filters.search);
+      const usePlainSearch = filters.searchMode === "plain";
+      const parsedSearch = usePlainSearch
+        ? undefined
+        : parsePropertySearchQuery(filters.search);
 
       let inferredCategoryId = filters.categoryId;
-      if (inferredCategoryId === undefined && parsedSearch.category) {
+      if (
+        !usePlainSearch &&
+        inferredCategoryId === undefined &&
+        parsedSearch?.category
+      ) {
         const categories = await Category.findAll({
           attributes: ["id", "name"],
         });
@@ -127,15 +134,17 @@ export class PropertyController {
 
       const resolvedFilters: PropertyListQueryDto = {
         ...filters,
-        search: parsedSearch.textSearch,
-        location: filters.location || parsedSearch.location,
+        search: usePlainSearch ? filters.search?.trim() || undefined : parsedSearch?.textSearch,
+        location: usePlainSearch
+          ? filters.location
+          : filters.location || parsedSearch?.location,
         categoryId: inferredCategoryId,
-        maxPrice: filters.maxPrice ?? parsedSearch.maxPrice,
-        minRoi: filters.minRoi ?? parsedSearch.minRoi,
-        minArea: filters.minArea ?? parsedSearch.minArea,
+        maxPrice: filters.maxPrice ?? parsedSearch?.maxPrice,
+        minRoi: filters.minRoi ?? parsedSearch?.minRoi,
+        minArea: filters.minArea ?? parsedSearch?.minArea,
         maxDistanceFromHighway:
-          filters.maxDistanceFromHighway ?? parsedSearch.maxDistanceFromHighway,
-        status: filters.status ?? parsedSearch.status,
+          filters.maxDistanceFromHighway ?? parsedSearch?.maxDistanceFromHighway,
+        status: filters.status ?? parsedSearch?.status,
       };
 
       const where = buildPropertyWhere(resolvedFilters);
