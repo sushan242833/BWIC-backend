@@ -8,6 +8,7 @@ export interface AuthTokenPayload {
   sub: string;
   role: UserRole;
   email: string;
+  tokenVersion: number;
 }
 
 const baseCookieOptions = (): CookieOptions => ({
@@ -22,11 +23,14 @@ export const authCookieName = authConfig.cookieName;
 
 export const signAuthToken = (payload: AuthTokenPayload): string =>
   jwt.sign(payload, env.auth.jwtSecret, {
+    algorithm: "HS256",
     expiresIn: authConfig.tokenTtl as SignOptions["expiresIn"],
   });
 
 export const verifyAuthToken = (token: string): AuthTokenPayload =>
-  jwt.verify(token, env.auth.jwtSecret) as AuthTokenPayload;
+  jwt.verify(token, env.auth.jwtSecret, {
+    algorithms: ["HS256"],
+  }) as AuthTokenPayload;
 
 export const setAuthCookie = (
   res: Response,

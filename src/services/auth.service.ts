@@ -19,6 +19,10 @@ import { assertRateLimit } from "@utils/request-rate-limit";
 import { AppError } from "../middleware/error.middleware";
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const genericRegistrationFailureMessage =
+  "Unable to create an account with this email. Please sign in or use a different email address.";
+const genericVerificationFailureMessage =
+  "Invalid or expired verification code. Please request a new one and try again.";
 
 const clearEmailVerificationState = (user: User) => {
   user.emailVerificationOtp = null;
@@ -39,14 +43,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      if (!existingUser.isEmailVerified) {
-        throw new AppError(
-          "An account with this email already exists. Please verify your email.",
-          409,
-        );
-      }
-
-      throw new AppError("An account with this email already exists.", 409);
+      throw new AppError(genericRegistrationFailureMessage, 409);
     }
 
     const passwordHash = await hashPassword(request.password);
@@ -99,36 +96,27 @@ export class AuthService {
       });
 
       if (!user) {
-        throw new AppError(
-          "No pending email verification was found for this email.",
-          400,
-        );
+        throw new AppError(genericVerificationFailureMessage, 400);
       }
 
       if (user.isEmailVerified) {
-        return;
+        throw new AppError(genericVerificationFailureMessage, 400);
       }
 
       if (!user.emailVerificationOtp || !user.emailVerificationOtpExpiresAt) {
-        throw new AppError(
-          "No active verification code found. Please request a new OTP.",
-          400,
-        );
+        throw new AppError(genericVerificationFailureMessage, 400);
       }
 
       if (user.emailVerificationOtpExpiresAt.getTime() <= Date.now()) {
         clearEmailVerificationState(user);
         await user.save({ transaction });
-        throw new AppError("OTP has expired. Please request a new code.", 400);
+        throw new AppError(genericVerificationFailureMessage, 400);
       }
 
       if (user.otpAttempts >= authConfig.emailVerification.maxVerifyAttempts) {
         clearEmailVerificationState(user);
         await user.save({ transaction });
-        throw new AppError(
-          "Maximum OTP attempts exceeded. Please request a new code.",
-          429,
-        );
+        throw new AppError(genericVerificationFailureMessage, 400);
       }
 
       const submittedOtpHash = hashEmailVerificationOtp(
@@ -142,19 +130,11 @@ export class AuthService {
         if (user.otpAttempts >= authConfig.emailVerification.maxVerifyAttempts) {
           clearEmailVerificationState(user);
           await user.save({ transaction });
-          throw new AppError(
-            "Maximum OTP attempts exceeded. Please request a new code.",
-            429,
-          );
+          throw new AppError(genericVerificationFailureMessage, 400);
         }
 
         await user.save({ transaction });
-        throw new AppError("Invalid OTP", 400, [
-          {
-            path: "otp",
-            message: "Enter the latest 6-digit code sent to your email.",
-          },
-        ]);
+        throw new AppError(genericVerificationFailureMessage, 400);
       }
 
       user.isEmailVerified = true;
@@ -169,14 +149,14 @@ export class AuthService {
   ): Promise<ResendOtpResponseDto> {
     const normalizedEmail = this.normalizeEmail(request.email);
 
-    assertRateLimit({
+    await assertRateLimit({
       key: `email-verification:resend:${requesterIp}`,
       maxRequests: authConfig.emailVerification.maxAttemptsPerWindow,
       windowMs: authConfig.emailVerification.attemptsWindowMinutes * 60 * 1000,
       message: "Too many OTP resend requests. Please wait and try again.",
     });
 
-    assertRateLimit({
+    await assertRateLimit({
       key: `email-verification:cooldown:${normalizedEmail}`,
       maxRequests: 1,
       windowMs: authConfig.emailVerification.resendCooldownSeconds * 1000,
@@ -194,14 +174,11 @@ export class AuthService {
       });
 
       if (!user) {
-        throw new AppError(
-          "No pending email verification was found for this email.",
-          400,
-        );
+        return;
       }
 
       if (user.isEmailVerified) {
-        throw new AppError("Email is already verified. Please log in.", 400);
+        return;
       }
 
       user.emailVerificationOtp = otpHash;

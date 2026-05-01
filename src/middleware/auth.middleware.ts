@@ -28,7 +28,7 @@ const attachAuthenticatedUser = async (
     const payload = verifyAuthToken(token);
     const user = await User.findByPk(Number(payload.sub));
 
-    if (!user) {
+    if (!user || payload.tokenVersion !== user.tokenVersion) {
       clearAuthCookie(res);
       if (strict) {
         throw new AppError(authErrorMessage, 401);

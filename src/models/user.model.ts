@@ -32,6 +32,7 @@ export interface UserAttributes {
   fullName: string;
   email: string;
   passwordHash: string;
+  tokenVersion: number;
   role: UserRole;
   isActive: boolean;
   isEmailVerified: boolean;
@@ -45,6 +46,7 @@ export interface UserAttributes {
 export type UserCreationAttributes = Optional<
   UserAttributes,
   | "id"
+  | "tokenVersion"
   | "role"
   | "isActive"
   | "isEmailVerified"
@@ -78,6 +80,11 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
   @AllowNull(false)
   @Column(DataType.STRING)
   passwordHash!: string;
+
+  @AllowNull(false)
+  @Default(0)
+  @Column(DataType.INTEGER)
+  tokenVersion!: number;
 
   @AllowNull(false)
   @Default(USER_ROLE.USER)

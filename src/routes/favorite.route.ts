@@ -1,6 +1,7 @@
 import { Router } from "express";
 import FavoriteController from "@controller/favorite.controller";
 import { requireAuth } from "../middleware/auth.middleware";
+import { requireTrustedOrigin } from "../middleware/csrf.middleware";
 import { validateRequest } from "../validation/request-validation";
 import { favoritePropertyParamSchema } from "../validation/request-schemas";
 
@@ -19,6 +20,7 @@ router.get(
 
 router.post(
   "/:propertyId",
+  requireTrustedOrigin,
   requireAuth,
   validateRequest({ params: favoritePropertyParamSchema }),
   (req, res, next) => FavoriteController.addFavorite(req, res, next),
@@ -26,6 +28,7 @@ router.post(
 
 router.delete(
   "/:propertyId",
+  requireTrustedOrigin,
   requireAuth,
   validateRequest({ params: favoritePropertyParamSchema }),
   (req, res, next) => FavoriteController.removeFavorite(req, res, next),

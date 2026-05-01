@@ -25,12 +25,12 @@ import {
   generatePasswordResetToken,
   hashResetToken,
 } from "@utils/password-reset";
-import { assertRateLimit } from "@utils/request-rate-limit";
 import {
   clearAuthCookie,
   setAuthCookie,
   signAuthToken,
 } from "@utils/token";
+import { clearRateLimit, assertRateLimit } from "@utils/request-rate-limit";
 import { sendSuccess } from "@utils/api-response";
 import { AppError } from "../middleware/error.middleware";
 
@@ -40,6 +40,7 @@ export class AuthController {
       sub: String(user.id),
       role: user.role,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
   }
 
@@ -62,6 +63,15 @@ export class AuthController {
     try {
       const request = req.body as LoginRequestDto;
       const normalizedEmail = authService.normalizeEmail(request.email);
+      const requesterIp = req.ip || req.socket.remoteAddress || "unknown";
+      const loginRateLimitKey = `login:${requesterIp}:${normalizedEmail}`;
+
+      await assertRateLimit({
+        key: loginRateLimitKey,
+        maxRequests: authConfig.emailVerification.maxAttemptsPerWindow,
+        windowMs: authConfig.emailVerification.attemptsWindowMinutes * 60 * 1000,
+        message: "Too many login attempts. Please wait and try again.",
+      });
 
       const user = await User.findOne({
         where: { email: normalizedEmail },
@@ -71,34 +81,24 @@ export class AuthController {
         return next(new AppError("Invalid email or password", 401));
       }
 
-      if (!user.isActive) {
-        return next(new AppError("Your account is inactive", 403));
-      }
-
       const passwordMatches = await comparePassword(
         request.password,
         user.passwordHash,
       );
 
-      if (!passwordMatches) {
+      if (
+        !passwordMatches ||
+        !user.isActive ||
+        !user.isEmailVerified ||
+        (
+          request.scope === USER_ROLE.ADMIN &&
+          user.role !== USER_ROLE.ADMIN
+        )
+      ) {
         return next(new AppError("Invalid email or password", 401));
       }
 
-      if (!user.isEmailVerified) {
-        return next(
-          new AppError("Please verify your email before logging in.", 403),
-        );
-      }
-
-      if (
-        request.scope === USER_ROLE.ADMIN &&
-        user.role !== USER_ROLE.ADMIN
-      ) {
-        return next(
-          new AppError("This account is not allowed to access the admin portal", 403),
-        );
-      }
-
+      await clearRateLimit(loginRateLimitKey);
       setAuthCookie(res, this.buildToken(user), request.rememberMe);
 
       return sendSuccess(res, {
@@ -130,7 +130,8 @@ export class AuthController {
       const response = await authService.resendOtp(request, requesterIp);
 
       return sendSuccess(res, {
-        message: "A new OTP has been sent to your email.",
+        message:
+          "If the email is eligible for verification, a new OTP has been sent.",
         data: response,
       });
     } catch (error) {
@@ -167,7 +168,7 @@ export class AuthController {
       const normalizedEmail = authService.normalizeEmail(request.email);
       const requesterIp = req.ip || req.socket.remoteAddress || "unknown";
 
-      assertRateLimit({
+      await assertRateLimit({
         key: `forgot-password:${requesterIp}`,
         maxRequests: authConfig.passwordReset.maxAttemptsPerWindow,
         windowMs: authConfig.passwordReset.attemptsWindowMinutes * 60 * 1000,
@@ -335,6 +336,7 @@ export class AuthController {
         }
 
         user.passwordHash = newPasswordHash;
+        user.tokenVersion += 1;
         await user.save({ transaction });
 
         await PasswordResetToken.update(

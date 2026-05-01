@@ -1,5 +1,6 @@
 import { Router } from "express";
 import AuthController from "@controller/auth.controller";
+import { requireTrustedOrigin } from "../middleware/csrf.middleware";
 import { optionalAuth } from "../middleware/auth.middleware";
 import { validateRequest } from "../validation/request-validation";
 import {
@@ -54,7 +55,9 @@ router.post(
   (req, res, next) => AuthController.resetPassword(req, res, next),
 );
 
-router.post("/logout", (req, res, next) => AuthController.logout(req, res, next));
+router.post("/logout", requireTrustedOrigin, (req, res, next) =>
+  AuthController.logout(req, res, next),
+);
 
 router.get("/me", optionalAuth, (req, res, next) =>
   AuthController.me(req, res, next),

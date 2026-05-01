@@ -2,6 +2,7 @@ import { Sequelize } from "sequelize-typescript";
 import { Property } from "@models/properties.model";
 import { Category } from "@models/category.model";
 import { ContactMessage } from "@models/contact.model";
+import { AuthRateLimit } from "@models/auth-rate-limit.model";
 import { Favorite } from "@models/favorite.model";
 import { PasswordResetToken } from "@models/password-reset-token.model";
 import { UserRecommendationSettings } from "@models/user-recommendation-settings.model";
@@ -20,6 +21,7 @@ const sequelize = new Sequelize({
     Property,
     Category,
     ContactMessage,
+    AuthRateLimit,
     User,
     Favorite,
     PasswordResetToken,

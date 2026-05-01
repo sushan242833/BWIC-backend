@@ -263,7 +263,7 @@ export const registerSchema = strictObject({
     z.string().min(2, "fullName must be at least 2 characters long"),
   ),
   email: emailString("email"),
-  password: passwordString(),
+  password: strongPasswordString("password"),
   rememberMe: optionalBoolean(),
 });
 

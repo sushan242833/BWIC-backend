@@ -1,6 +1,7 @@
 import { Router } from "express";
 import CategoryController from "@controller/category.controller";
 import { requireAdmin } from "../middleware/auth.middleware";
+import { requireTrustedOrigin } from "../middleware/csrf.middleware";
 import { validateRequest } from "../validation/request-validation";
 import {
   createCategorySchema,
@@ -23,6 +24,7 @@ router.get(
 // POST /api/categories - Create a new category
 router.post(
   "/",
+  requireTrustedOrigin,
   requireAdmin,
   validateRequest({ body: createCategorySchema }),
   CategoryController.create,
@@ -31,6 +33,7 @@ router.post(
 // PUT /api/categories/:id - Update category by ID
 router.put(
   "/:id",
+  requireTrustedOrigin,
   requireAdmin,
   validateRequest({ params: idParamSchema, body: updateCategorySchema }),
   CategoryController.update,
@@ -39,6 +42,7 @@ router.put(
 // DELETE /api/categories/:id - Delete category by ID
 router.delete(
   "/:id",
+  requireTrustedOrigin,
   requireAdmin,
   validateRequest({ params: idParamSchema }),
   CategoryController.delete,

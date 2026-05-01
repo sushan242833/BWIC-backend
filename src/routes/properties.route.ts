@@ -2,6 +2,7 @@ import express from "express";
 import PropertyController from "@controller/properties.controller";
 import { upload } from "@config/multer";
 import { requireAdmin } from "../middleware/auth.middleware";
+import { requireTrustedOrigin } from "../middleware/csrf.middleware";
 import { validateRequest } from "../validation/request-validation";
 import {
   createPropertySchema,
@@ -28,12 +29,14 @@ router.get(
 );
 router.delete(
   "/:id",
+  requireTrustedOrigin,
   requireAdmin,
   validateRequest({ params: idParamSchema }),
   (req, res, next) => PropertyController.delete(req, res, next),
 );
 router.post(
   "/",
+  requireTrustedOrigin,
   requireAdmin,
   upload.array(PROPERTY_IMAGE_FIELD_NAME, PROPERTY_IMAGE_UPLOAD_LIMIT),
   validateRequest({ body: createPropertySchema }),
@@ -41,6 +44,7 @@ router.post(
 );
 router.put(
   "/:id",
+  requireTrustedOrigin,
   requireAdmin,
   upload.array(PROPERTY_IMAGE_FIELD_NAME, PROPERTY_IMAGE_UPLOAD_LIMIT),
   validateRequest({ params: idParamSchema, body: updatePropertySchema }),

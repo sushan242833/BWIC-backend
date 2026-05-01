@@ -9,6 +9,7 @@ import { USER_ROLE, User } from "@models/user.model";
 import * as emailModule from "@utils/email";
 import * as emailVerificationModule from "@utils/email-verification";
 import * as passwordModule from "@utils/password";
+import * as requestRateLimitModule from "@utils/request-rate-limit";
 import { AppError } from "../middleware/error.middleware";
 
 const restorers: Array<() => void> = [];
@@ -111,7 +112,10 @@ test("register rejects an existing email address", async () => {
     (error: unknown) => {
       assert.ok(error instanceof AppError);
       assert.equal(error.statusCode, 409);
-      assert.equal(error.message, "An account with this email already exists.");
+      assert.equal(
+        error.message,
+        "Unable to create an account with this email. Please sign in or use a different email address.",
+      );
       return true;
     },
   );
@@ -176,7 +180,10 @@ test("expired OTP is rejected and cleared", async () => {
     (error: unknown) => {
       assert.ok(error instanceof AppError);
       assert.equal(error.statusCode, 400);
-      assert.equal(error.message, "OTP has expired. Please request a new code.");
+      assert.equal(
+        error.message,
+        "Invalid or expired verification code. Please request a new one and try again.",
+      );
       return true;
     },
   );
@@ -217,13 +224,11 @@ test("invalid OTP is rejected without exposing technical details", async () => {
     (error: unknown) => {
       assert.ok(error instanceof AppError);
       assert.equal(error.statusCode, 400);
-      assert.equal(error.message, "Invalid OTP");
-      assert.deepEqual(error.details, [
-        {
-          path: "otp",
-          message: "Enter the latest 6-digit code sent to your email.",
-        },
-      ]);
+      assert.equal(
+        error.message,
+        "Invalid or expired verification code. Please request a new one and try again.",
+      );
+      assert.deepEqual(error.details, []);
       return true;
     },
   );
@@ -250,6 +255,7 @@ test("resend OTP overwrites the old code and resets attempts", async () => {
   } as unknown as User;
 
   createTransactionStub();
+  patchMethod(requestRateLimitModule, "assertRateLimit", async () => {});
   patchMethod(User, "findOne", async () => user);
   patchMethod(emailVerificationModule, "createEmailVerificationOtp", () => ({
     otp: "135790",
@@ -278,9 +284,11 @@ test("resend OTP overwrites the old code and resets attempts", async () => {
   assert.match((sentEmail as { text: string }).text, /135790/);
 });
 
-test("login is blocked until the email is verified", async () => {
+test("login returns a generic auth failure until the email is verified", async () => {
   let nextError: unknown;
 
+  patchMethod(requestRateLimitModule, "assertRateLimit", async () => {});
+  patchMethod(requestRateLimitModule, "clearRateLimit", async () => {});
   patchMethod(User, "findOne", async () => ({
     id: 99,
     email: "blocked@example.com",
@@ -293,6 +301,7 @@ test("login is blocked until the email is verified", async () => {
 
   await AuthController.login(
     {
+      ip: "127.0.0.20",
       body: {
         email: "blocked@example.com",
         password: "StrongPassword123!",
@@ -305,9 +314,9 @@ test("login is blocked until the email is verified", async () => {
   );
 
   assert.ok(nextError instanceof AppError);
-  assert.equal((nextError as AppError).statusCode, 403);
+  assert.equal((nextError as AppError).statusCode, 401);
   assert.equal(
     (nextError as AppError).message,
-    "Please verify your email before logging in.",
+    "Invalid email or password",
   );
 });
