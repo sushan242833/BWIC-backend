@@ -62,6 +62,24 @@ test("matches landmark variants in descriptions for locality scoring", () => {
   assert.match(scored.explanation[0]?.reason || "", /preferred area/i);
 });
 
+test("scores a property when it matches any preferred location alternative", () => {
+  const scored = scoreProperty(
+    {
+      ...baseProperty,
+      title: "Residential land near Kalanki chowk",
+      location: "Kalanki, Kathmandu",
+      description: "Quick ring road access",
+    },
+    {
+      locations: ["Bafal", "Kalanki"],
+    },
+  );
+
+  assert.ok((scored.scoreBreakdown?.location || 0) > 0);
+  assert.equal(scored.matchPercentage > 0, true);
+  assert.match(scored.explanation[0]?.reason || "", /preferred area/i);
+});
+
 test("builds recommendation location filters across multiple searchable fields", () => {
   const where = buildRecommendationPropertyWhere({
     location: "Kathmandu",

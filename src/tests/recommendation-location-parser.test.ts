@@ -103,3 +103,31 @@ test("still warns about unsupported generic school preferences when no landmark 
   assert.equal(result.preferences.location, undefined);
   assert.equal(result.warnings.includes("Ignored unsupported Phase 1 terms: school"), true);
 });
+
+test("treats approximate Nepali land units as preferred area instead of a minimum", () => {
+  const result = parseRecommendationBrief(
+    "property near gongabu or bafal around 2 ropani with good roi",
+  );
+
+  assert.equal(result.mustHave.minArea, undefined);
+  assert.equal(result.preferences.area, 10952);
+  assert.equal(result.preferences.roi, 12);
+  assert.equal(
+    result.detectedEntities.some((entity) => entity.type === "minArea"),
+    false,
+  );
+  assert.equal(
+    result.detectedEntities.some(
+      (entity) =>
+        entity.type === "preferredArea" && Number(entity.value) === 10952,
+    ),
+    true,
+  );
+  assert.equal(
+    result.detectedEntities.some(
+      (entity) =>
+        entity.type === "preferredRoi" && Number(entity.value) === 2,
+    ),
+    false,
+  );
+});

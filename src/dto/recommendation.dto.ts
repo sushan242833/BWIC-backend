@@ -6,6 +6,7 @@ export interface RecommendationMustHaveDto {
   categoryId?: number;
   category?: string;
   location?: string;
+  locations?: string[];
   maxPrice?: number;
   minRoi?: number;
   minArea?: number;
@@ -13,12 +14,20 @@ export interface RecommendationMustHaveDto {
   status?: PropertyStatus;
 }
 
+export interface RecommendationLocationCoordinateDto {
+  latitude: number;
+  longitude: number;
+}
+
 export interface RecommendationPreferencesDto {
   categoryId?: number;
   category?: string;
   location?: string;
+  locations?: string[];
   latitude?: number;
   longitude?: number;
+  coordinates?: RecommendationLocationCoordinateDto[];
+  placeIds?: string[];
   locationRadiusKm?: number;
   price?: number;
   roi?: number;
@@ -50,7 +59,7 @@ export type RecommendationDetectedEntityType =
 
 export interface RecommendationDetectedEntityDto {
   type: RecommendationDetectedEntityType;
-  value: string | number | boolean;
+  value: string | number | boolean | string[];
   raw: string;
 }
 

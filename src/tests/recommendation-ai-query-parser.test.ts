@@ -284,6 +284,72 @@ test("uses AI qualitative ROI and highway extraction directly in the recommendat
   assert.equal(result.parsedBrief.aiExtraction?.maxDistanceFromHighway, 1);
 });
 
+test("splits AI location alternatives into plural recommendation preferences", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => ({
+        source: "ai",
+        extraction: {
+          location: {
+            value: "Bafal or Kalanki",
+            mode: "nearby",
+            confidence: 0.9,
+          },
+          confidence: 0.94,
+        },
+      }),
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    brief: "property near bafal or kalanki",
+  });
+
+  assert.equal(result.preferences.location, "Bafal");
+  assert.deepEqual(result.preferences.locations, ["Bafal", "Kalanki"]);
+  assert.deepEqual(
+    result.parsedBrief.appliedPreferences.locations,
+    ["Bafal", "Kalanki"],
+  );
+  assert.equal(
+    result.parsedBrief.detectedEntities.filter(
+      (entity) => entity.type === "location",
+    ).length >= 2,
+    true,
+  );
+});
+
+test("reclassifies approximate AI area extraction as a preferred area", async () => {
+  const parser = new RecommendationQueryParserService({
+    aiQueryUnderstandingService: {
+      extractRecommendationQuery: async () => ({
+        source: "ai",
+        extraction: {
+          location: {
+            value: "Gongabu or Bafal",
+            mode: "nearby",
+            confidence: 0.92,
+          },
+          minArea: 10952,
+          preferredRoi: 12,
+          confidence: 0.95,
+        },
+      }),
+    },
+    categoryLoader,
+  });
+
+  const result = await parser.parse({
+    brief: "property near gongabu or bafal around 2 ropani with good roi",
+  });
+
+  assert.equal(result.mustHave.minArea, undefined);
+  assert.equal(result.preferences.area, 10952);
+  assert.equal(result.parsedBrief.aiExtraction?.minArea, undefined);
+  assert.equal(result.parsedBrief.aiExtraction?.preferredArea, 10952);
+});
+
 test("keeps AI soft landmark locations as preferences without forcing a strict filter", async () => {
   const parser = new RecommendationQueryParserService({
     aiQueryUnderstandingService: {

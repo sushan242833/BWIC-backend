@@ -80,7 +80,7 @@ const optionalBoolean = () =>
 
 const optionalStringArray = () =>
   z.preprocess((value) => {
-    const candidate = firstString(value);
+    const candidate = value;
 
     if (candidate === undefined || candidate === null || candidate === "") {
       return undefined;
@@ -106,6 +106,64 @@ const optionalStringArray = () =>
 
     return candidate;
   }, z.array(z.string()).optional());
+
+const optionalCoordinateArray = () =>
+  z.preprocess((value) => {
+    const candidate = value;
+
+    if (candidate === undefined || candidate === null || candidate === "") {
+      return undefined;
+    }
+
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+
+    return [candidate];
+  },
+  z
+    .array(
+      z.preprocess((value) => {
+        if (typeof value === "string") {
+          const [rawLatitude, rawLongitude] = value.split(",", 2);
+          if (!rawLatitude || !rawLongitude) {
+            return value;
+          }
+
+          return {
+            latitude: Number.parseFloat(rawLatitude.trim()),
+            longitude: Number.parseFloat(rawLongitude.trim()),
+          };
+        }
+
+        return value;
+      }, strictObject({
+        latitude: z.number({ error: "coordinates.latitude must be a number" }),
+        longitude: z.number({
+          error: "coordinates.longitude must be a number",
+        }),
+      })),
+    )
+    .optional());
+
+const optionalStringOrStringArray = () =>
+  z.preprocess((value) => {
+    if (Array.isArray(value)) {
+      const normalized = value
+        .filter((candidate): candidate is string => typeof candidate === "string")
+        .map((candidate) => candidate.trim())
+        .filter(Boolean);
+
+      return normalized.length > 0 ? normalized : undefined;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed || undefined;
+    }
+
+    return value;
+  }, z.union([z.string(), z.array(z.string())]).optional());
 
 const optionalNumber = (label: string, min = 0) =>
   z.preprocess(
@@ -426,8 +484,11 @@ const recommendationPreferencesSchema = z
     categoryId: optionalInteger("preferences.categoryId"),
     category: optionalTrimmedString(),
     location: optionalTrimmedString(),
+    locations: optionalStringArray(),
     latitude: optionalNumber("preferences.latitude"),
     longitude: optionalNumber("preferences.longitude"),
+    coordinates: optionalCoordinateArray(),
+    placeIds: optionalStringArray(),
     locationRadiusKm: optionalNumber("preferences.locationRadiusKm"),
     price: optionalNumber("preferences.price"),
     roi: optionalNumber("preferences.roi"),
@@ -460,6 +521,7 @@ const recommendationMustHaveSchema = strictObject({
   categoryId: optionalInteger("mustHave.categoryId"),
   category: optionalTrimmedString(),
   location: optionalTrimmedString(),
+  locations: optionalStringArray(),
   maxPrice: optionalNumber("mustHave.maxPrice"),
   minRoi: optionalNumber("mustHave.minRoi"),
   minArea: optionalNumber("mustHave.minArea"),
@@ -472,9 +534,13 @@ export const recommendationQuerySchema = z
     brief: optionalTrimmedString(),
     categoryId: optionalInteger("categoryId"),
     category: optionalTrimmedString(),
-    location: optionalTrimmedString(),
+    location: optionalStringOrStringArray(),
+    locations: optionalStringArray(),
     latitude: optionalNumber("latitude"),
     longitude: optionalNumber("longitude"),
+    coordinates: optionalCoordinateArray(),
+    placeId: optionalStringArray(),
+    placeIds: optionalStringArray(),
     locationRadiusKm: optionalNumber("locationRadiusKm"),
     price: optionalNumber("price"),
     roi: optionalNumber("roi"),
@@ -483,7 +549,8 @@ export const recommendationQuerySchema = z
     status: optionalPropertyStatusSchema,
     mustHaveCategoryId: optionalInteger("mustHaveCategoryId"),
     mustHaveCategory: optionalTrimmedString(),
-    mustHaveLocation: optionalTrimmedString(),
+    mustHaveLocation: optionalStringOrStringArray(),
+    mustHaveLocations: optionalStringArray(),
     maxPrice: optionalNumber("maxPrice"),
     minRoi: optionalNumber("minRoi"),
     minArea: optionalNumber("minArea"),
@@ -491,7 +558,8 @@ export const recommendationQuerySchema = z
       "mustHaveMaxDistanceFromHighway",
     ),
     mustHaveStatus: optionalPropertyStatusSchema,
-    preferredLocation: optionalTrimmedString(),
+    preferredLocation: optionalStringOrStringArray(),
+    preferredLocations: optionalStringArray(),
     preferredLatitude: optionalNumber("preferredLatitude"),
     preferredLongitude: optionalNumber("preferredLongitude"),
     preferredRoi: optionalNumber("preferredRoi"),

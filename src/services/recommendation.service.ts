@@ -15,8 +15,17 @@ import recommendationQueryParserService, {
 import recommendationWeightService from "@services/recommendation-weight.service";
 import type { PaginationMeta } from "@utils/api-response";
 import { geocodeLocation } from "@utils/geocoding";
-import { buildRecommendationPropertyWhere } from "@utils/property-filters";
+import {
+  type RecommendationPropertyFilterQuery,
+  buildRecommendationPropertyWhere,
+} from "@utils/property-filters";
 import { serializePropertySummary } from "@utils/property-serializers";
+import {
+  getCoordinatesFromPayload,
+  getLocationNamesFromPayload,
+  hasLocationCriteria,
+  parseCoordinateString,
+} from "@utils/recommendation-locations";
 import {
   RecommendationPreferences,
   scoreProperty,
@@ -48,13 +57,16 @@ interface RecommendationVisibilityOptions {
   hasLocationPreference: boolean;
   hasScoringPreferences: boolean;
   minimumMatchPercentage: number;
+  allowZeroMatchResults: boolean;
 }
 
 export const filterVisibleRecommendations = (
   items: RecommendationResultDto[],
   options: RecommendationVisibilityOptions,
 ): RecommendationResultDto[] => {
-  let visibleItems = items.filter((item) => item.matchPercentage > 0);
+  let visibleItems = options.allowZeroMatchResults
+    ? [...items]
+    : items.filter((item) => item.matchPercentage > 0);
 
   if (options.hasLocationPreference) {
     visibleItems = visibleItems.filter(
@@ -93,6 +105,22 @@ export class RecommendationService {
     return undefined;
   }
 
+  private extractQueryStrings(value: unknown): string[] {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : [];
+    }
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .filter((candidate): candidate is string => typeof candidate === "string")
+      .map((candidate) => candidate.trim())
+      .filter(Boolean);
+  }
+
   private parseNumber(value: unknown): number | undefined {
     if (typeof value === "number") {
       return Number.isNaN(value) ? undefined : value;
@@ -105,6 +133,44 @@ export class RecommendationService {
 
     const parsed = Number.parseFloat(raw.replace(/,/g, "").trim());
     return Number.isNaN(parsed) ? undefined : parsed;
+  }
+
+  private parseCoordinateList(value: unknown) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((candidate) => {
+        if (
+          candidate &&
+          typeof candidate === "object" &&
+          "latitude" in candidate &&
+          "longitude" in candidate
+        ) {
+          const latitude = this.parseNumber(
+            (candidate as Record<string, unknown>).latitude,
+          );
+          const longitude = this.parseNumber(
+            (candidate as Record<string, unknown>).longitude,
+          );
+
+          if (latitude !== undefined && longitude !== undefined) {
+            return { latitude, longitude };
+          }
+
+          return null;
+        }
+
+        if (typeof candidate === "string") {
+          return parseCoordinateString(candidate);
+        }
+
+        return null;
+      })
+      .filter((candidate): candidate is { latitude: number; longitude: number } =>
+        candidate !== null,
+      );
   }
 
   private normalizePagination(
@@ -126,9 +192,8 @@ export class RecommendationService {
   ): boolean {
     return Boolean(
       weights.location > 0 &&
-        (preferences.location ||
-          (preferences.latitude !== undefined &&
-            preferences.longitude !== undefined)),
+        (hasLocationCriteria(preferences) ||
+          getCoordinatesFromPayload(preferences).length > 0),
     );
   }
 
@@ -138,9 +203,8 @@ export class RecommendationService {
   ): boolean {
     return Boolean(
       (weights.location > 0 &&
-        (preferences.location ||
-          (preferences.latitude !== undefined &&
-            preferences.longitude !== undefined))) ||
+        (hasLocationCriteria(preferences) ||
+          getCoordinatesFromPayload(preferences).length > 0)) ||
         (weights.price > 0 &&
           ((preferences.price !== undefined && preferences.price > 0) ||
             (preferences.priceCeiling !== undefined &&
@@ -161,9 +225,18 @@ export class RecommendationService {
     preferences: RecommendationPreferences,
     mustHave: RecommendationRequestDto["mustHave"],
   ): RecommendationPreferences {
+    const preferredLocations = getLocationNamesFromPayload(preferences);
+    const fallbackLocations = getLocationNamesFromPayload(mustHave);
+    const coordinates = getCoordinatesFromPayload(preferences);
+
     return {
       ...preferences,
-      location: preferences.location ?? mustHave?.location,
+      location: preferredLocations[0] ?? fallbackLocations[0],
+      locations:
+        preferredLocations.length > 0 ? preferredLocations : fallbackLocations,
+      latitude: coordinates[0]?.latitude,
+      longitude: coordinates[0]?.longitude,
+      coordinates: coordinates.length > 0 ? coordinates : undefined,
       priceCeiling:
         preferences.price !== undefined ||
         mustHave?.maxPrice === undefined ||
@@ -187,14 +260,89 @@ export class RecommendationService {
     };
   }
 
-  private buildCandidateWhere(mustHave: RecommendationRequestDto["mustHave"]) {
+  private buildLocationScopedCandidateWhere(
+    mustHave: RecommendationRequestDto["mustHave"],
+    preferences: RecommendationPreferences,
+    weights: RecommendationWeights,
+  ) {
+    const mustHaveLocations = getLocationNamesFromPayload(mustHave);
+    const preferredLocations = getLocationNamesFromPayload(preferences);
+    const candidateLocations =
+      mustHaveLocations.length > 0 ? mustHaveLocations : preferredLocations;
+    const inactivePriceToleranceRatio =
+      recommendationConfig.inactivePreferencePriceToleranceRatio;
+    const inactiveAreaToleranceRatio =
+      recommendationConfig.inactivePreferenceAreaToleranceRatio;
+    const inactiveRoiFloorRatio =
+      recommendationConfig.inactivePreferenceRoiFloorRatio;
+    const inactivePreferenceScope: RecommendationPropertyFilterQuery = {};
+
+    if (
+      weights.price <= 0 &&
+      mustHave?.maxPrice === undefined &&
+      preferences.price !== undefined &&
+      preferences.price > 0
+    ) {
+      inactivePreferenceScope.minPrice = Math.max(
+        0,
+        Math.round(preferences.price * (1 - inactivePriceToleranceRatio)),
+      );
+      inactivePreferenceScope.maxPrice = Math.round(
+        preferences.price * (1 + inactivePriceToleranceRatio),
+      );
+    }
+
+    if (
+      weights.roi <= 0 &&
+      mustHave?.minRoi === undefined &&
+      preferences.roi !== undefined &&
+      preferences.roi > 0
+    ) {
+      inactivePreferenceScope.minRoi = Number(
+        Math.max(0, preferences.roi * inactiveRoiFloorRatio).toFixed(2),
+      );
+    }
+
+    if (
+      weights.area <= 0 &&
+      mustHave?.minArea === undefined &&
+      preferences.area !== undefined &&
+      preferences.area > 0
+    ) {
+      inactivePreferenceScope.minArea = Math.max(
+        0,
+        Math.round(preferences.area * (1 - inactiveAreaToleranceRatio)),
+      );
+      inactivePreferenceScope.maxArea = Math.round(
+        preferences.area * (1 + inactiveAreaToleranceRatio),
+      );
+    }
+
+    if (
+      weights.highwayAccess <= 0 &&
+      mustHave?.maxDistanceFromHighway === undefined &&
+      preferences.maxDistanceFromHighway !== undefined &&
+      preferences.maxDistanceFromHighway > 0
+    ) {
+      inactivePreferenceScope.maxDistanceFromHighway =
+        preferences.maxDistanceFromHighway;
+    }
+
     return buildRecommendationPropertyWhere({
       categoryId: mustHave?.categoryId,
-      location: mustHave?.location,
-      maxPrice: mustHave?.maxPrice,
-      minRoi: mustHave?.minRoi,
-      minArea: mustHave?.minArea,
-      maxDistanceFromHighway: mustHave?.maxDistanceFromHighway,
+      location: candidateLocations[0],
+      locations: candidateLocations,
+      minPrice: inactivePreferenceScope.minPrice,
+      maxPrice: mustHave?.maxPrice ?? inactivePreferenceScope.maxPrice,
+      minRoi: mustHave?.minRoi ?? inactivePreferenceScope.minRoi,
+      minArea: mustHave?.minArea ?? inactivePreferenceScope.minArea,
+      maxArea:
+        mustHave?.minArea === undefined
+          ? inactivePreferenceScope.maxArea
+          : undefined,
+      maxDistanceFromHighway:
+        mustHave?.maxDistanceFromHighway ??
+        inactivePreferenceScope.maxDistanceFromHighway,
       status: mustHave?.status,
     });
   }
@@ -202,12 +350,43 @@ export class RecommendationService {
   buildRequestFromQuery(
     query: Record<string, unknown>,
   ): RecommendationRequestDto {
+    const mustHaveLocations = getLocationNamesFromPayload({
+      locations: [
+        ...this.extractQueryStrings(query.mustHaveLocation),
+        ...this.extractQueryStrings(query.mustHaveLocations),
+      ],
+    });
+    const preferenceLocations = getLocationNamesFromPayload({
+      locations: [
+        ...this.extractQueryStrings(query.location),
+        ...this.extractQueryStrings(query.locations),
+        ...this.extractQueryStrings(query.preferredLocation),
+        ...this.extractQueryStrings(query.preferredLocations),
+      ],
+    });
+    const coordinates = [
+      ...this.parseCoordinateList(query.coordinates),
+      ...this.parseCoordinateList(query.coordinate),
+    ];
+    const legacyLatitude =
+      this.parseNumber(query.latitude) ?? this.parseNumber(query.preferredLatitude);
+    const legacyLongitude =
+      this.parseNumber(query.longitude) ??
+      this.parseNumber(query.preferredLongitude);
+    const normalizedCoordinates =
+      coordinates.length > 0
+        ? coordinates
+        : legacyLatitude !== undefined && legacyLongitude !== undefined
+          ? [{ latitude: legacyLatitude, longitude: legacyLongitude }]
+          : [];
+
     return {
       brief: this.extractQueryString(query.brief),
       mustHave: {
         categoryId: this.parseNumber(query.mustHaveCategoryId),
         category: this.extractQueryString(query.mustHaveCategory),
-        location: this.extractQueryString(query.mustHaveLocation),
+        location: mustHaveLocations[0],
+        locations: mustHaveLocations,
         maxPrice: this.parseNumber(query.maxPrice),
         minRoi: this.parseNumber(query.minRoi),
         minArea: this.parseNumber(query.minArea),
@@ -221,15 +400,16 @@ export class RecommendationService {
       preferences: {
         categoryId: this.parseNumber(query.categoryId),
         category: this.extractQueryString(query.category),
-        location:
-          this.extractQueryString(query.location) ||
-          this.extractQueryString(query.preferredLocation),
-        latitude:
-          this.parseNumber(query.latitude) ??
-          this.parseNumber(query.preferredLatitude),
-        longitude:
-          this.parseNumber(query.longitude) ??
-          this.parseNumber(query.preferredLongitude),
+        location: preferenceLocations[0],
+        locations: preferenceLocations,
+        latitude: normalizedCoordinates[0]?.latitude,
+        longitude: normalizedCoordinates[0]?.longitude,
+        coordinates:
+          normalizedCoordinates.length > 0 ? normalizedCoordinates : undefined,
+        placeIds: [
+          ...this.extractQueryStrings(query.placeId),
+          ...this.extractQueryStrings(query.placeIds),
+        ],
         locationRadiusKm: this.parseNumber(query.locationRadiusKm),
         price: this.parseNumber(query.price),
         roi:
@@ -251,32 +431,43 @@ export class RecommendationService {
   private async enrichLocationCoordinates(
     preferences: RecommendationPreferences,
   ): Promise<RecommendationPreferences> {
-    if (
-      !preferences.location ||
-      (preferences.latitude !== undefined &&
-        preferences.longitude !== undefined)
-    ) {
+    const locations = getLocationNamesFromPayload(preferences);
+    const coordinates = getCoordinatesFromPayload(preferences);
+
+    if (locations.length === 0 || coordinates.length >= locations.length) {
       return preferences;
     }
 
-    const locationProfile = buildLocationSearchProfile(preferences.location);
-    if (!locationProfile) {
-      return preferences;
-    }
+    const geocodedLocations = await Promise.all(
+      locations.map(async (location) => {
+        const locationProfile = buildLocationSearchProfile(location);
+        if (!locationProfile) {
+          return null;
+        }
 
-    const coordinates = await geocodeLocation(locationProfile.value);
-    if (!coordinates) {
-      return {
-        ...preferences,
-        location: locationProfile.value,
-      };
-    }
+        const coordinate = await geocodeLocation(locationProfile.value);
+        return coordinate
+          ? {
+              latitude: coordinate.latitude,
+              longitude: coordinate.longitude,
+            }
+          : null;
+      }),
+    );
+
+    const nextCoordinates = geocodedLocations.filter(
+      (coordinate): coordinate is { latitude: number; longitude: number } =>
+        coordinate !== null,
+    );
 
     return {
       ...preferences,
-      location: locationProfile.value,
-      latitude: coordinates.latitude,
-      longitude: coordinates.longitude,
+      location: locations[0] ?? preferences.location,
+      locations,
+      latitude: nextCoordinates[0]?.latitude ?? preferences.latitude,
+      longitude: nextCoordinates[0]?.longitude ?? preferences.longitude,
+      coordinates:
+        nextCoordinates.length > 0 ? nextCoordinates : preferences.coordinates,
     };
   }
 
@@ -326,7 +517,14 @@ export class RecommendationService {
       preferences,
       weights,
     );
-    const candidateWhere = this.buildCandidateWhere(parsedQuery.mustHave);
+    const candidateWhere = this.buildLocationScopedCandidateWhere(
+      parsedQuery.mustHave,
+      preferences,
+      weights,
+    );
+    const hasScopedCandidates =
+      Object.keys(candidateWhere).length > 0 ||
+      Object.getOwnPropertySymbols(candidateWhere).length > 0;
 
     const candidates = await Property.findAll({
       where: candidateWhere,
@@ -344,6 +542,7 @@ export class RecommendationService {
       hasLocationPreference: this.hasLocationPreference(preferences, weights),
       hasScoringPreferences,
       minimumMatchPercentage: this.minimumRecommendationMatchPercentage,
+      allowZeroMatchResults: !hasScoringPreferences && hasScopedCandidates,
     };
 
     const ranked = filterVisibleRecommendations(

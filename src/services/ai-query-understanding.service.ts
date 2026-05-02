@@ -78,6 +78,9 @@ Rules:
 - Do not use maxPrice for an "around/about" price unless the query also clearly says it is a maximum budget.
 - Return area fields in square feet.
 - Convert Nepali land units before returning area fields.
+- Use minArea only for hard minimum language like at least, minimum, above, over, or more than.
+- Use preferredArea for approximate target language like around, about, approximately, roughly, ideal, target, or preferred.
+- Do not map an approximate area phrase like "around 2 ropani" to minArea.
 - Distance from highway should be in kilometers, but if the query implies a very close distance without specifying units, interpret that as maxDistanceFromHighway=1 km, if says 200m then maxDistanceFromHighway=0.2 km.
 - Hills conversion table: 1 ropani = 5476 sq ft, 1 aana/anna = 342.25 sq ft, 1 paisa = 85.5625 sq ft, 1 daam/dam = 21.390625 sq ft.
 - Terai conversion table: 1 bigha = 72900 sq ft, 1 kattha/katha = 3645 sq ft, 1 dhur = 182.25 sq ft.
@@ -92,6 +95,7 @@ Rules:
 - Use preferredRoi for qualitative ROI hints without an explicit number.
 - Map "good roi", "high roi", or "strong roi" to preferredRoi=12.
 - Map "very high roi" to preferredRoi=15.
+- Do not treat a nearby area or land-size number like "2 ropani" as an ROI value.
 - Map "easy access to highway", "near highway", "close to highway", or similar phrases without an explicit distance to maxDistanceFromHighway=1.
 - Schools, hospitals, chowks, landmarks, and local areas are valid locations or landmark preferences except for around 200 m from highway as we have that for distance from highway. Do not reject them.
 `.trim();

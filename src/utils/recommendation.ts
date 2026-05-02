@@ -13,8 +13,13 @@ import {
 } from "@dto/recommendation.dto";
 import {
   buildLocationSearchProfile,
+  type LocationSearchProfile,
   matchLocationText,
 } from "@utils/nlp/location-parser";
+import {
+  getCoordinatesFromPayload,
+  getLocationNamesFromPayload,
+} from "@utils/recommendation-locations";
 
 export interface RecommendationPreferences extends RecommendationPreferencesDto {
   priceCeiling?: number;
@@ -160,6 +165,18 @@ const haversineKm = (
   return earthRadiusKm * c;
 };
 
+const getLocationProfiles = (
+  preferences: RecommendationPreferences,
+): LocationSearchProfile[] =>
+  getLocationNamesFromPayload(preferences)
+    .map((location) => buildLocationSearchProfile(location))
+    .filter(
+      (profile): profile is NonNullable<typeof profile> => profile !== undefined,
+    );
+
+const getPreferredLocationLabel = (locationCount: number): string =>
+  locationCount > 1 ? "one of your preferred locations" : "your preferred location";
+
 export const scoreProperty = (
   property: RecommendationProperty,
   preferences: RecommendationPreferences,
@@ -171,28 +188,46 @@ export const scoreProperty = (
   const scoreBreakdown: RecommendationScoreBreakdownDto = {};
   let score = 0;
   let maxPossible = 0;
-  const locationProfile = preferences.location
-    ? buildLocationSearchProfile(preferences.location)
-    : undefined;
-  const locationTextMatch = matchLocationText(
-    {
-      location: property.location,
-      title: property.title,
-      description: property.description,
+  const locationProfiles = getLocationProfiles(preferences);
+  const preferredLocationLabel = getPreferredLocationLabel(
+    locationProfiles.length,
+  );
+  const locationCoordinates = getCoordinatesFromPayload(preferences);
+  const bestLocationTextMatch = locationProfiles.reduce<{
+    profile?: LocationSearchProfile;
+    match: ReturnType<typeof matchLocationText>;
+  }>(
+    (best, profile) => {
+      const match = matchLocationText(
+        {
+          location: property.location,
+          title: property.title,
+          description: property.description,
+        },
+        profile,
+      );
+
+      return match.ratio > best.match.ratio ? { profile, match } : best;
     },
-    locationProfile,
+    {
+      match: {
+        matched: false,
+        ratio: 0,
+        strength: "none",
+        reason: "Did not find your preferred area in the available location text",
+      },
+    },
   );
 
   if (
     weights.location > 0 &&
-    preferences.latitude !== undefined &&
-    preferences.longitude !== undefined
+    locationCoordinates.length > 0
   ) {
     maxPossible += weights.location;
 
     let points = 0;
-    const textPoints = locationTextMatch.matched
-      ? round2(weights.location * locationTextMatch.ratio)
+    const textPoints = bestLocationTextMatch.match.matched
+      ? round2(weights.location * bestLocationTextMatch.match.ratio)
       : 0;
     const radiusKm =
       preferences.locationRadiusKm !== undefined &&
@@ -206,11 +241,15 @@ export const scoreProperty = (
       property.longitude !== null &&
       property.longitude !== undefined
     ) {
-      const distanceKm = haversineKm(
-        preferences.latitude,
-        preferences.longitude,
-        property.latitude,
-        property.longitude,
+      const distanceKm = Math.min(
+        ...locationCoordinates.map((coordinate) =>
+          haversineKm(
+            coordinate.latitude,
+            coordinate.longitude,
+            property.latitude as number,
+            property.longitude as number,
+          ),
+        ),
       );
       const distancePoints = safeRatioScore(
         weights.location,
@@ -220,18 +259,18 @@ export const scoreProperty = (
       const percent = toPercentOfWeight(points, weights.location);
       const distanceReason =
         distanceKm <= radiusKm
-          ? `Near your preferred location at about ${formatCompactNumber(distanceKm)} km away`
-          : `Farther from your preferred location at about ${formatCompactNumber(distanceKm)} km away`;
+          ? `Near ${preferredLocationLabel} at about ${formatCompactNumber(distanceKm)} km away`
+          : `Farther from ${preferredLocationLabel} at about ${formatCompactNumber(distanceKm)} km away`;
       const reason =
-        textPoints >= distancePoints && locationTextMatch.matched
-          ? locationTextMatch.reason
+        textPoints >= distancePoints && bestLocationTextMatch.match.matched
+          ? bestLocationTextMatch.match.reason
           : distanceReason;
       explanation.push(
         createExplanation(
           "location",
           reason,
           points,
-          points > 0 && (distanceKm <= radiusKm || locationTextMatch.matched)
+          points > 0 && (distanceKm <= radiusKm || bestLocationTextMatch.match.matched)
             ? "positive"
             : "negative",
         ),
@@ -242,9 +281,9 @@ export const scoreProperty = (
         pushUnique(penalties, reason);
       }
     } else {
-      if (locationTextMatch.matched) {
+      if (bestLocationTextMatch.match.matched) {
         points = textPoints;
-        const reason = locationTextMatch.reason;
+        const reason = bestLocationTextMatch.match.reason;
         explanation.push(
           createExplanation("location", reason, points, "positive"),
         );
@@ -260,35 +299,37 @@ export const scoreProperty = (
         explanation.push(
           createExplanation(
             "location",
-            "Location coordinates are missing, so distance preference could not be scored",
+            `Property coordinates are missing, so distance to ${preferredLocationLabel} could not be scored`,
             0,
             "neutral",
           ),
         );
         pushUnique(
           penalties,
-          "Location coordinates are missing, so proximity could not be confirmed",
+          `Property coordinates are missing, so proximity to ${preferredLocationLabel} could not be confirmed`,
         );
       }
     }
 
     score += points;
     addBreakdownValue(scoreBreakdown, "location", points);
-  } else if (weights.location > 0 && preferences.location) {
+  } else if (weights.location > 0 && locationProfiles.length > 0) {
     maxPossible += weights.location;
-    const points = locationTextMatch.matched
-      ? round2(weights.location * locationTextMatch.ratio)
+    const points = bestLocationTextMatch.match.matched
+      ? round2(weights.location * bestLocationTextMatch.match.ratio)
       : 0;
     score += points;
-    const reason = locationTextMatch.matched
-      ? locationTextMatch.reason
-      : "Not in your preferred location";
+    const reason = bestLocationTextMatch.match.matched
+      ? bestLocationTextMatch.match.reason
+      : locationProfiles.length > 1
+        ? "Not in any of your preferred locations"
+        : "Not in your preferred location";
     explanation.push(
       createExplanation(
         "location",
         reason,
         points,
-        locationTextMatch.matched ? "positive" : "negative",
+        bestLocationTextMatch.match.matched ? "positive" : "negative",
       ),
     );
     if (

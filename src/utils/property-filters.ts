@@ -15,6 +15,7 @@ import {
   PropertyStatus,
 } from "@constants/property";
 import { buildLocationSearchProfile } from "@utils/nlp/location-parser";
+import { getLocationNamesFromPayload } from "@utils/recommendation-locations";
 
 export const propertySortValues = [
   "random",
@@ -39,6 +40,7 @@ export interface PropertyFilterQuery {
   maxPrice?: number;
   minRoi?: number;
   minArea?: number;
+  maxArea?: number;
   maxDistanceFromHighway?: number;
   status?: PropertyStatus;
   sort?: PropertySortValue;
@@ -50,12 +52,16 @@ export type RecommendationPropertyFilterQuery = Pick<
   PropertyFilterQuery,
   | "location"
   | "categoryId"
+  | "minPrice"
   | "maxPrice"
   | "minRoi"
   | "minArea"
+  | "maxArea"
   | "maxDistanceFromHighway"
   | "status"
->;
+> & {
+  locations?: string[];
+};
 
 export const validatePropertyFilterCombinations = (
   value: PropertyFilterQuery,
@@ -115,6 +121,13 @@ export const buildPropertyWhere = (
     };
   }
 
+  if (filters.maxArea !== undefined) {
+    whereClause.area = {
+      ...(whereClause.area as object),
+      [Op.lte]: filters.maxArea,
+    };
+  }
+
   if (filters.maxDistanceFromHighway !== undefined) {
     whereClause.distanceFromHighway = {
       ...(whereClause.distanceFromHighway as object),
@@ -159,7 +172,9 @@ export const buildRecommendationPropertyWhere = (
     search: undefined,
     location: undefined,
   });
-  const locationWhere = buildPropertyLocationWhere(filters.location);
+  const locationWhere = buildPropertyLocationWhereAny(
+    getLocationNamesFromPayload(filters),
+  );
 
   if (!locationWhere) {
     return baseWhere;
@@ -274,6 +289,29 @@ const buildPropertyLocationWhere = (
         [Op.or]: conditions,
       }
     : undefined;
+};
+
+const buildPropertyLocationWhereAny = (
+  locations: string[],
+): WhereOptions | undefined => {
+  const conditions = locations
+    .map((location) => buildPropertyLocationWhere(location))
+    .filter(
+      (candidate): candidate is NonNullable<typeof candidate> =>
+        candidate !== undefined,
+    );
+
+  if (conditions.length === 0) {
+    return undefined;
+  }
+
+  if (conditions.length === 1) {
+    return conditions[0];
+  }
+
+  return {
+    [Op.or]: conditions,
+  };
 };
 
 const PROPERTY_TEXT_SEARCH_FIELDS = ["title", "location", "areaNepali"] as const;

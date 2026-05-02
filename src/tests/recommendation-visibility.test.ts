@@ -42,6 +42,7 @@ test("filters out recommendations below the minimum match threshold when scoring
       hasLocationPreference: false,
       hasScoringPreferences: true,
       minimumMatchPercentage: 30,
+      allowZeroMatchResults: false,
     },
   );
 
@@ -62,6 +63,7 @@ test("removes 0% recommendations even when no scoring preferences are active", (
       hasLocationPreference: false,
       hasScoringPreferences: false,
       minimumMatchPercentage: 30,
+      allowZeroMatchResults: false,
     },
   );
 
@@ -87,9 +89,38 @@ test("filters out recommendations with zero location score when location prefere
       hasLocationPreference: true,
       hasScoringPreferences: true,
       minimumMatchPercentage: 30,
+      allowZeroMatchResults: false,
     },
   );
 
   assert.equal(visible.length, 1);
   assert.equal(visible[0]?.property.id, 4);
+});
+
+test("keeps location-scoped recommendations even when all scoring weights are inactive", () => {
+  const visible = filterVisibleRecommendations(
+    [
+      createResult({
+        matchPercentage: 0,
+        score: 0,
+        scoreBreakdown: { location: 0 },
+      }),
+      createResult({
+        property: { ...createResult({}).property, id: 5 },
+        matchPercentage: 0,
+        score: 0,
+        scoreBreakdown: { location: 0 },
+      }),
+    ],
+    {
+      hasLocationPreference: false,
+      hasScoringPreferences: false,
+      minimumMatchPercentage: 30,
+      allowZeroMatchResults: true,
+    },
+  );
+
+  assert.equal(visible.length, 2);
+  assert.equal(visible[0]?.property.id, 1);
+  assert.equal(visible[1]?.property.id, 5);
 });

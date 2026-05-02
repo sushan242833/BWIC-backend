@@ -181,6 +181,10 @@ test("sends Nepal land-unit and NPR conversion rules to the AI model", async () 
   assert.match(capturedSystemPrompt, /1 kattha\/katha = 3645 sq ft/i);
   assert.match(capturedSystemPrompt, /1 bigha = 72900 sq ft/i);
   assert.match(capturedSystemPrompt, /never return area in square meters/i);
+  assert.match(
+    capturedSystemPrompt,
+    /use preferredArea for approximate target language like around, about, approximately, roughly, ideal, target, or preferred/i,
+  );
 });
 
 test("sends qualitative ROI and highway mapping rules to the AI model", async () => {

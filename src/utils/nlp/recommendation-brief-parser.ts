@@ -8,6 +8,7 @@ import type {
 import { parseCategoryCandidate } from "@utils/nlp/category-parser";
 import { parseLocationCandidates } from "@utils/nlp/location-parser";
 import {
+  AREA_UNIT_PATTERN_SOURCE,
   parseAreaValue,
   parseDistanceKmValue,
   parseNepaliCurrency,
@@ -29,6 +30,12 @@ const QUALITATIVE_ROI_TARGETS = {
 } as const;
 
 const DEFAULT_HIGHWAY_DISTANCE_KM = 1;
+const AREA_UNIT_FOLLOWUP_PATTERN = new RegExp(
+  `^\\s*(?:${AREA_UNIT_PATTERN_SOURCE})\\b`,
+  "i",
+);
+const CURRENCY_UNIT_FOLLOWUP_PATTERN =
+  /^\s*(?:crores?|crore|cr|lakhs?|lakh|lacs?|lac)\b/i;
 
 const UNSUPPORTED_BRIEF_TERMS = [
   "bedroom",
@@ -62,6 +69,24 @@ const pushEntity = (
   if (!exists) {
     entities.push(entity);
   }
+};
+
+const parseAreaFromMatch = (amount?: string, unit?: string): number | undefined =>
+  amount ? parseAreaValue(`${amount}${unit ? ` ${unit}` : ""}`) : undefined;
+
+const hasInvalidRoiNumericFollowup = (
+  brief: string,
+  match: RegExpExecArray | null,
+): boolean => {
+  if (!match || match.index === undefined) {
+    return false;
+  }
+
+  const trailingText = brief.slice(match.index + match[0].length);
+  return (
+    AREA_UNIT_FOLLOWUP_PATTERN.test(trailingText) ||
+    CURRENCY_UNIT_FOLLOWUP_PATTERN.test(trailingText)
+  );
 };
 
 const escapeRegExp = (value: string): string =>
@@ -133,8 +158,16 @@ export const parseRecommendationBrief = (
   result.detectedLocations = locations;
   result.detectedLocation = preferredLocation || strictLocation;
 
+  const strictLocations = locations
+    .filter((location) => location.mode === "strict")
+    .map((location) => location.value);
+  const preferredLocations = locations
+    .filter((location) => location.mode === "nearby" || location.mode === "soft")
+    .map((location) => location.value);
+
   if (strictLocation) {
     result.mustHave.location = strictLocation.value;
+    result.mustHave.locations = strictLocations;
     pushEntity(result.detectedEntities, {
       type: "location",
       value: strictLocation.value,
@@ -144,6 +177,8 @@ export const parseRecommendationBrief = (
 
   if (preferredLocation) {
     result.preferences.location = preferredLocation.value;
+    result.preferences.locations =
+      preferredLocations.length > 0 ? preferredLocations : [preferredLocation.value];
     pushEntity(result.detectedEntities, {
       type: "location",
       value: preferredLocation.value,
@@ -193,7 +228,7 @@ export const parseRecommendationBrief = (
     /\b(?:roi|return on investment)\s*(?:of\s*)?(?:around|about|approximately|approx(?:imately)?|target(?: of)?|preferred)?\s*(\d[\d.]*)\s*%?\b/i;
   const highRoiPattern = /\b(?:(very high|high|good|strong)\s+roi)\b/i;
 
-  const minRoiMatch = normalizedBrief.match(minRoiPattern);
+  const minRoiMatch = minRoiPattern.exec(normalizedBrief);
   if (minRoiMatch) {
     const parsedRoi = parseNumberToken(minRoiMatch[1]);
     if (parsedRoi !== undefined) {
@@ -206,10 +241,10 @@ export const parseRecommendationBrief = (
       });
     }
   } else {
-    const preferredRoiMatch = normalizedBrief.match(preferredRoiPattern);
+    const preferredRoiMatch = preferredRoiPattern.exec(normalizedBrief);
     const highRoiMatch = normalizedBrief.match(highRoiPattern);
 
-    if (preferredRoiMatch) {
+    if (preferredRoiMatch && !hasInvalidRoiNumericFollowup(normalizedBrief, preferredRoiMatch)) {
       const parsedRoi = parseNumberToken(preferredRoiMatch[1]);
       if (parsedRoi !== undefined) {
         result.preferences.roi = parsedRoi;
@@ -234,14 +269,20 @@ export const parseRecommendationBrief = (
     }
   }
 
+  const areaUnitPattern = `(${AREA_UNIT_PATTERN_SOURCE})`;
   const minAreaPattern =
-    /\b(?:at least|min(?:imum)?(?: area)?|area above|area over|over|above|more than)\s*(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square\s*feet|ft2|ft²)\b/i;
-  const preferredAreaPattern =
-    /\b(?:around|about|approximately|approx(?:imately)?|roughly|near)\s*(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square\s*feet|ft2|ft²)\b/i;
+    new RegExp(
+      `\\b(?:at least|min(?:imum)?(?: area)?|area above|area over|over|above|more than)\\s*(\\d[\\d,]*(?:\\.\\d+)?)\\s*${areaUnitPattern}\\b`,
+      "i",
+    );
+  const preferredAreaPattern = new RegExp(
+    `\\b(?:around|about|approximately|approx(?:imately)?|roughly|ideal(?:ly)?|target(?: area)?|preferred(?: area)?|close to|near)\\s*(\\d[\\d,]*(?:\\.\\d+)?)\\s*${areaUnitPattern}\\b`,
+    "i",
+  );
 
   const minAreaMatch = normalizedBrief.match(minAreaPattern);
   if (minAreaMatch) {
-    const parsedArea = parseAreaValue(minAreaMatch[1]);
+    const parsedArea = parseAreaFromMatch(minAreaMatch[1], minAreaMatch[2]);
     if (parsedArea !== undefined) {
       result.mustHave.minArea = parsedArea;
       result.preferences.area = parsedArea;
@@ -254,7 +295,10 @@ export const parseRecommendationBrief = (
   } else {
     const preferredAreaMatch = normalizedBrief.match(preferredAreaPattern);
     if (preferredAreaMatch) {
-      const parsedArea = parseAreaValue(preferredAreaMatch[1]);
+      const parsedArea = parseAreaFromMatch(
+        preferredAreaMatch[1],
+        preferredAreaMatch[2],
+      );
       if (parsedArea !== undefined) {
         result.preferences.area = parsedArea;
         pushEntity(result.detectedEntities, {

@@ -12,6 +12,9 @@ export const recommendationConfig = {
   strongMatchThresholdPercent: 60,
   closePriceDeltaRatio: 0.025,
   closeAreaDeltaRatio: 0.15,
+  inactivePreferencePriceToleranceRatio: 0.35,
+  inactivePreferenceAreaToleranceRatio: 0.25,
+  inactivePreferenceRoiFloorRatio: 0.85,
   earthRadiusKm: 6371,
   scoreWeights: DEFAULT_RECOMMENDATION_WEIGHTS,
 } as const;
