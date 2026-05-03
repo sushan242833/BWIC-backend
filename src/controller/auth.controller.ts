@@ -90,10 +90,7 @@ export class AuthController {
         !passwordMatches ||
         !user.isActive ||
         !user.isEmailVerified ||
-        (
-          request.scope === USER_ROLE.ADMIN &&
-          user.role !== USER_ROLE.ADMIN
-        )
+        (request.scope && user.role !== request.scope)
       ) {
         return next(new AppError("Invalid email or password", 401));
       }

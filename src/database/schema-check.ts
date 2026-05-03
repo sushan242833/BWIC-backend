@@ -10,11 +10,7 @@ const AUTH_USER_REQUIRED_COLUMNS = [
 ] as const;
 
 const AUTH_RATE_LIMIT_TABLE = "auth_rate_limits";
-const AUTH_RATE_LIMIT_REQUIRED_COLUMNS = [
-  "key",
-  "count",
-  "resetAt",
-] as const;
+const AUTH_RATE_LIMIT_REQUIRED_COLUMNS = ["key", "count", "resetAt"] as const;
 
 const formatColumnList = (columns: readonly string[]): string =>
   columns.map((column) => `"${column}"`).join(", ");
@@ -31,8 +27,7 @@ export const assertAuthUserSchema = async (): Promise<void> => {
   const queryInterface = sequelize.getQueryInterface();
   const table = await queryInterface.describeTable("users");
   const missingColumns = AUTH_USER_REQUIRED_COLUMNS.filter(
-    (columnName) =>
-      !Object.prototype.hasOwnProperty.call(table, columnName),
+    (columnName) => !Object.prototype.hasOwnProperty.call(table, columnName),
   );
 
   if (missingColumns.length === 0) {

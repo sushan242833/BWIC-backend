@@ -124,6 +124,19 @@ export class CategoryController {
         return next(new AppError("Category not found", 404));
       }
 
+      const propertyCount = await Property.count({
+        where: { categoryId: Number(id) },
+      });
+
+      if (propertyCount > 0) {
+        return next(
+          new AppError(
+            "This category cannot be deleted while properties are still assigned to it.",
+            409,
+          ),
+        );
+      }
+
       await category.destroy();
       return sendSuccess(res, {
         message: "Category deleted successfully",

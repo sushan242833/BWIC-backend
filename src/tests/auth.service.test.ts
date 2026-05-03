@@ -320,3 +320,41 @@ test("login returns a generic auth failure until the email is verified", async (
     "Invalid email or password",
   );
 });
+
+test("login rejects admins on the user portal", async () => {
+  let nextError: unknown;
+
+  patchMethod(requestRateLimitModule, "assertRateLimit", async () => {});
+  patchMethod(requestRateLimitModule, "clearRateLimit", async () => {});
+  patchMethod(User, "findOne", async () => ({
+    id: 7,
+    email: "admin@example.com",
+    passwordHash: "stored-hash",
+    role: USER_ROLE.ADMIN,
+    isActive: true,
+    isEmailVerified: true,
+  }));
+  patchMethod(passwordModule, "comparePassword", async () => true);
+
+  await AuthController.login(
+    {
+      ip: "127.0.0.21",
+      body: {
+        email: "admin@example.com",
+        password: "StrongPassword123!",
+        scope: USER_ROLE.USER,
+      },
+    } as Request,
+    {} as Response,
+    (error?: unknown) => {
+      nextError = error;
+    },
+  );
+
+  assert.ok(nextError instanceof AppError);
+  assert.equal((nextError as AppError).statusCode, 401);
+  assert.equal(
+    (nextError as AppError).message,
+    "Invalid email or password",
+  );
+});
