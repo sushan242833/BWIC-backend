@@ -266,9 +266,6 @@ export class RecommendationService {
     weights: RecommendationWeights,
   ) {
     const mustHaveLocations = getLocationNamesFromPayload(mustHave);
-    const preferredLocations = getLocationNamesFromPayload(preferences);
-    const candidateLocations =
-      mustHaveLocations.length > 0 ? mustHaveLocations : preferredLocations;
     const inactivePriceToleranceRatio =
       recommendationConfig.inactivePreferencePriceToleranceRatio;
     const inactiveAreaToleranceRatio =
@@ -330,8 +327,11 @@ export class RecommendationService {
 
     return buildRecommendationPropertyWhere({
       categoryId: mustHave?.categoryId,
-      location: candidateLocations[0],
-      locations: candidateLocations,
+      // Only strict must-have locations should narrow the candidate query.
+      // Nearby/preferred locations stay in the scoring layer so we do not
+      // exclude geographically relevant properties before ranking.
+      location: mustHaveLocations[0],
+      locations: mustHaveLocations,
       minPrice: inactivePreferenceScope.minPrice,
       maxPrice: mustHave?.maxPrice ?? inactivePreferenceScope.maxPrice,
       minRoi: mustHave?.minRoi ?? inactivePreferenceScope.minRoi,

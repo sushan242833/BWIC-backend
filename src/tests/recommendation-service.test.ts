@@ -72,7 +72,7 @@ test("builds candidate filters from must-have location and budget constraints", 
   });
 });
 
-test("builds candidate filters from preferred locations when no must-have location is present", () => {
+test("does not turn preferred locations into SQL candidate filters when no must-have location is present", () => {
   const service = new RecommendationService();
 
   const candidateWhere = (
@@ -94,19 +94,11 @@ test("builds candidate filters from preferred locations when no must-have locati
     DEFAULT_RECOMMENDATION_WEIGHTS,
   );
 
-  const andConditions = candidateWhere[Op.and] as Array<Record<string | symbol, unknown>>;
-
-  assert.ok(Array.isArray(andConditions));
-  assert.equal(andConditions.length, 2);
-  assert.equal(andConditions[0]?.categoryId, 1);
-  assert.deepEqual(andConditions[0]?.price, {
-    [Op.lte]: 20000000,
-  });
   assert.deepEqual(
-    andConditions[1],
+    candidateWhere,
     buildRecommendationPropertyWhere({
-      location: "Bafal",
-      locations: ["Bafal", "Kalanki"],
+      categoryId: 1,
+      maxPrice: 20000000,
     }),
   );
 });
