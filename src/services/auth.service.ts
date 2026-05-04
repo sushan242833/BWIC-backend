@@ -19,8 +19,7 @@ import { assertRateLimit } from "@utils/request-rate-limit";
 import { AppError } from "../middleware/error.middleware";
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
-const genericRegistrationFailureMessage =
-  "Unable to create an account with this email. Please sign in or use a different email address.";
+const duplicateRegistrationEmailMessage = "Email already exists.";
 const genericVerificationFailureMessage =
   "Invalid or expired verification code. Please request a new one and try again.";
 
@@ -43,7 +42,12 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new AppError(genericRegistrationFailureMessage, 409);
+      throw new AppError(duplicateRegistrationEmailMessage, 409, [
+        {
+          path: "email",
+          message: duplicateRegistrationEmailMessage,
+        },
+      ]);
     }
 
     const passwordHash = await hashPassword(request.password);

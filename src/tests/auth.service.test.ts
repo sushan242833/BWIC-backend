@@ -112,10 +112,13 @@ test("register rejects an existing email address", async () => {
     (error: unknown) => {
       assert.ok(error instanceof AppError);
       assert.equal(error.statusCode, 409);
-      assert.equal(
-        error.message,
-        "Unable to create an account with this email. Please sign in or use a different email address.",
-      );
+      assert.equal(error.message, "Email already exists.");
+      assert.deepEqual(error.details, [
+        {
+          path: "email",
+          message: "Email already exists.",
+        },
+      ]);
       return true;
     },
   );

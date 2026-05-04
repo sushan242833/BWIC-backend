@@ -108,62 +108,74 @@ const optionalStringArray = () =>
   }, z.array(z.string()).optional());
 
 const optionalCoordinateArray = () =>
-  z.preprocess((value) => {
-    const candidate = value;
+  z.preprocess(
+    (value) => {
+      const candidate = value;
 
-    if (candidate === undefined || candidate === null || candidate === "") {
-      return undefined;
-    }
+      if (candidate === undefined || candidate === null || candidate === "") {
+        return undefined;
+      }
 
-    if (Array.isArray(candidate)) {
-      return candidate;
-    }
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
 
-    return [candidate];
-  },
-  z
-    .array(
-      z.preprocess((value) => {
-        if (typeof value === "string") {
-          const [rawLatitude, rawLongitude] = value.split(",", 2);
-          if (!rawLatitude || !rawLongitude) {
+      return [candidate];
+    },
+    z
+      .array(
+        z.preprocess(
+          (value) => {
+            if (typeof value === "string") {
+              const [rawLatitude, rawLongitude] = value.split(",", 2);
+              if (!rawLatitude || !rawLongitude) {
+                return value;
+              }
+
+              return {
+                latitude: Number.parseFloat(rawLatitude.trim()),
+                longitude: Number.parseFloat(rawLongitude.trim()),
+              };
+            }
+
             return value;
-          }
-
-          return {
-            latitude: Number.parseFloat(rawLatitude.trim()),
-            longitude: Number.parseFloat(rawLongitude.trim()),
-          };
-        }
-
-        return value;
-      }, strictObject({
-        latitude: z.number({ error: "coordinates.latitude must be a number" }),
-        longitude: z.number({
-          error: "coordinates.longitude must be a number",
-        }),
-      })),
-    )
-    .optional());
+          },
+          strictObject({
+            latitude: z.number({
+              error: "coordinates.latitude must be a number",
+            }),
+            longitude: z.number({
+              error: "coordinates.longitude must be a number",
+            }),
+          }),
+        ),
+      )
+      .optional(),
+  );
 
 const optionalStringOrStringArray = () =>
-  z.preprocess((value) => {
-    if (Array.isArray(value)) {
-      const normalized = value
-        .filter((candidate): candidate is string => typeof candidate === "string")
-        .map((candidate) => candidate.trim())
-        .filter(Boolean);
+  z.preprocess(
+    (value) => {
+      if (Array.isArray(value)) {
+        const normalized = value
+          .filter(
+            (candidate): candidate is string => typeof candidate === "string",
+          )
+          .map((candidate) => candidate.trim())
+          .filter(Boolean);
 
-      return normalized.length > 0 ? normalized : undefined;
-    }
+        return normalized.length > 0 ? normalized : undefined;
+      }
 
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      return trimmed || undefined;
-    }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed || undefined;
+      }
 
-    return value;
-  }, z.union([z.string(), z.array(z.string())]).optional());
+      return value;
+    },
+    z.union([z.string(), z.array(z.string())]).optional(),
+  );
 
 const optionalNumber = (label: string, min = 0) =>
   z.preprocess(
